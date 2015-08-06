@@ -119,8 +119,8 @@ run; quit;
 *	Create sectors for each ticker (TKR), since tickers are unique
 	we will treat it as a primary key and merge on the TKR variable;
 *	Note: we use 1-4 below because SAS treats the tab (for formatting)
-	as a space, which makes tickers with length = 3 really be = 4;
-data sector;
+	as a character, which makes tickers with length = 3 really be = 4;
+data secto;
 	input tkr $ 1-3 sector $ 4-35;
 	datalines;
 AA Industrial - Metals
