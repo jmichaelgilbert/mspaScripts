@@ -16,8 +16,8 @@
 data temp1;
 	length dimkey $2; 
 	length x 8.0; 
-	length Y 8.0; 
-	input dimkey $ x y; 
+	length y 8.0; 
+input dimkey $ x y; 
 datalines; 
 01 100 12.2
 02 300 7.45
@@ -29,10 +29,10 @@ run; quit;
 
 data temp2; 
 	length dimkey $2; 
-	length Z 8.0; 
+	length z 8.0; 
 	length first_name $10; 
 	length last_name $10; 
-	input dimkey $ z first_name $ last_name $; 
+input dimkey $ z first_name $ last_name $; 
 datalines; 
 01 100 steve miller
 02 300 Steve Utrup
