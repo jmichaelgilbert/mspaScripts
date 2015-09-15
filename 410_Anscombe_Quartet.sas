@@ -5,7 +5,7 @@
 
 *	Create Anscombe's Quartet;
 data Anscombe_Quartet;
-	input Y1 X1 Y2 X2 Y3 X3 Y4 X4;
+input Y1 X1 Y2 X2 Y3 X3 Y4 X4;
 datalines;
 8.04 10 9.14 10 7.46 10 6.58 8
 6.95 8 8.14 8 6.77 8 5.76 8
