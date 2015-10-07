@@ -1,6 +1,6 @@
 **********************************************************************;
-*       EDA_Sandbox;
-*       Last updated: 2015-10-06 by MJG;
+*       SAS_EDA_Sandbox;
+*       Last updated: 2015-10-07 by MJG;
 **********************************************************************;
  
 *       Generic macros to help conduct EDA on any data set;
@@ -65,8 +65,8 @@ run; quit;
         run; quit;
 %mend;
  
-*       Macro for summary stats from PROC MEANS;
-*       Must be used in conjunction with PROC TRANSPOSE;
+*       Macro to output summary stats from PROC MEANS across all variables;
+*       As designed, must be used in conjunction with PROC TRANSPOSE;
 %macro means(varname);
         proc means data = &data_og. noprint;
         output out = &varname. (drop = _freq_ _type_)
@@ -93,7 +93,7 @@ run; quit;
 run; quit;
 %mend;
  
-*       Macro to transpose summary stats from PROC MEANS;
+*       Macro to transpose summary stats from %macro means(varname);
 %macro transpose(varname);
         proc transpose data = &varname. out = &varname._t;
                 var _numeric_;
@@ -102,6 +102,7 @@ run; quit;
 %mend;
  
 *       Macro to store summary stats from PROC MEANS as macro variables;
+*       Useful for automated truncates, transforms, and imputes;
 %macro symput(varname);
         data _null_;
                 set &varname._t;
@@ -114,16 +115,18 @@ run; quit;
 **********************************************************************;
  
 *       List out the column names and data types for the data set;
+*       This is necessary as almost all macros depend on this output
+        to extract variable names in data set for looping;
 proc contents data = &data_og. out = &contents.;
 run; quit;
  
-*       Drop unnecessary variables gained from PROC CONTENTS;
+*       Drop unnecessary variables gained from PROC CONTENTS output;
 data &contents.;
         set &contents.(keep = name type length varnum format formatl
                 informat informl just npos nobs);
 run; quit;
  
-*       View contents of data set, more info than PROC CONTENTS output;
+*       View contents of data set, more info than og PROC CONTENTS output;
 proc print data = &contents.;
 run; quit;
  
@@ -131,7 +134,8 @@ run; quit;
 *       Scatter, Histogram, Boxplot;
 **********************************************************************;
  
-*       Conduct EDA on all _NUM_ variables;
+*       Conduct EDA on all _NUMERIC_ variables;
+*       Excludes response variable and any primary, foreign, or other key;
 data _null_;
         do i = 1 to num;
                 set &contents. nobs = num;
@@ -159,10 +163,78 @@ data _null_;
         end;
 run; quit;
  
-*       View all macro variables and verify data with PROC MEANS;
+*       View all macro variables;
 %put _user_;
- 
+
+*       Verify data with PROC MEANS output;
 proc means data = &data_og. NOLABELS
         NMISS N MEAN MEDIAN MODE STD SKEW
         P1 P5 P10 P25 P50 P75 P90 P95 P99 MIN MAX QRANGE;
 run; quit;
+
+**********************************************************************;
+*       Missing;
+**********************************************************************;
+*       Create flag variables for missing datum in data set;
+
+*       XXX
+
+**********************************************************************;
+*       Truncate, Transform, and Impute;
+**********************************************************************;
+*       Important to follow TTI in this order;
+*       For example, MEAN is extremely sensitive to outliers, so should
+        truncate to P1 & P99 before imputing based on data;
+*       Similarly, want to transform and add new variables to data set so
+        when imputing occurs it will impute on all versions of variabbles;
+
+***********************************;
+*       Truncate;
+***********************************;
+
+* XXX
+
+***********************************;
+*       Transform;
+***********************************;
+
+* XXX
+
+***********************************;
+*       Impute;
+***********************************;
+*       Here actually do imputing on two data sets, cloned from &data_og.;
+*       First creates new variables with MEAN, MEDIAN, MODE for missings;
+*       Second uses PROC MI to replace missing values in current variables;
+*       Benefit of keeping these separate is to see how well model does with
+        manual imputing of MMM vs. programmatic imputing;
+
+* XXX
+
+**********************************************************************;
+*       Models;
+**********************************************************************;
+*       Create multiple OLS models for data set;
+
+* XXX
+
+**********************************************************************;
+*       Scoring;
+**********************************************************************;
+*       Score multiple models based on Y-hat & error (residual);
+*       Model with the smallest %change between MSE and MAE in training
+        and test is selected;
+*       Model may NOT have highest adjusted R-squared, but here we care
+        about predictive accuracy and not statistical inference;
+*       The model with the highest adjusted R-squared may be overfit;
+
+* XXX
+
+**********************************************************************;
+*       Output Accuracy;
+**********************************************************************;
+*       Create specific format, freq, and tables for model validation;
+*       How many of the predicted values from response variable were
+        within 5%, 10%, and 15% of acutals on training and test?;
+
+* XXX
