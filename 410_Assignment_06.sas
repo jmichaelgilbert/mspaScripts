@@ -64,7 +64,7 @@ run; quit;
 *	Part 2: Correlations & Market Index;
 **********************************************************************;
 
-*	Use ODS Output to print Pearons' Correlation for portfolio;
+*	Use ODS Output to print Pearson's Correlation for portfolio;
 *	Can also specify "outp = port_corr" in first line of PROC CORR;
 ods trace on;
 ods output PearsonCorr = port_corr;
