@@ -6,6 +6,7 @@
 **********************************************************************;
 *	TO DO;
 *	Drop MF (missing flag) variables that undergo a ln transform;
+*	Need to handle signs or change signs of specific variables;
 **********************************************************************;
 
 *	Generic macros to help conduct EDA on any data set;
