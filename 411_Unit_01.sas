@@ -764,6 +764,41 @@ proc freq data = pca_test_ln_OV;
 	title "Operational Validation of TEST_&response._LN";
 run; quit;
 
+***********************************;
+*	Models: Champion Model;
+*	Truncate Output;
+***********************************;
+
+*	Testing effects of truncating yhat;
+*	Use max(log(120)) and min(log(30));
+
+*	Create data set and truncate;
+data pca_all_ln_trim;
+	set pca_all_ln;
+	yhat = max(min(yhat,log(120)),log(30));
+run; quit;
+
+*	PROC MEANS to validate output;
+proc means data = pca_all_ln_trim NOLABELS
+    NMISS N MEAN MODE STD SKEW
+    P1 P5 P10 P25 P50 P75 P90 P95 P99 MIN MAX QRANGE;
+run; quit;
+
+*	Operational Validation;
+data pca_all_ln_trim_OV;
+	set pca_all_ln_trim;
+	OV = abs(((yhat-&response._ln)/&response._ln));
+	Prediction_Grade = put(OV, Prediction_Grade.);
+	if Prediction_Grade = 'Missing' then delete;
+run; quit;
+
+proc freq data = pca_all_ln_trim_OV;
+	tables Prediction_Grade;
+	title "Operational Validation of &response._LN";
+run; quit;
+
+*	RESULT: NO effect on Operational Validation results;
+
 **********************************************************************;
 *	FIN;
 **********************************************************************;
