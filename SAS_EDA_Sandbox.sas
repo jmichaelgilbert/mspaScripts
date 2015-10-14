@@ -267,7 +267,7 @@ data _null_;
 run; quit;
 
 *	Verify data with PROC MEANS;
-proc means data = &data_og. NOLABELS
+proc means data = &data_defined. NOLABELS
 	NMISS N MEAN MEDIAN MODE STD SKEW 
 	P1 P5 P10 P25 P50 P75 P90 P95 P99 MIN MAX QRANGE;
 run; quit;
@@ -345,17 +345,6 @@ data _null_;
 	end;
 run; quit;
 
-*	Verify data with PROC MEANS;
-proc means data = &data_trim. NOLABELS
-	NMISS N MEAN MEDIAN MODE STD SKEW 
-	P1 P5 P10 P25 P50 P75 P90 P95 P99 MIN MAX QRANGE;
-run; quit;
-
-*	Verify the macro variables are stored correctly (RE: PROC MEANS);
-%put _local_;		*	All local macro variables;
-%put _global_;		*	All global macro variables;
-%put _user_;		*	All macro variables;
-
 ***********************************;
 *	Impute & Flags;
 ***********************************;
@@ -406,12 +395,6 @@ data _null_;
 			call execute('%impute('||name||')');
 	end;
 run; quit;				
-
-*	Verify data with PROC MEANS;
-proc means data = &data_imp_man. NOLABELS
-	NMISS N MEAN MEDIAN MODE STD SKEW 
-	P1 P5 P10 P25 P50 P75 P90 P95 P99 MIN MAX QRANGE;
-run; quit;
 
 *	Add in the missing flags;
 data _null_;
