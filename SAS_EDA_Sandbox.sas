@@ -3,6 +3,11 @@
 *	Last updated: 2015-10-13 by MJG;
 **********************************************************************;
 
+**********************************************************************;
+*	TO DO;
+*	Drop MF (missing flag) variables that undergo a ln transform;
+**********************************************************************;
+
 *	Generic macros to help conduct EDA on any data set;
 *	This section must be modified by the user;
 
@@ -23,9 +28,12 @@ run; quit;
 %let data_trim = &data_og._trim;
 %let data_imp = &data_trim._imp;
 %let data_imp_man = &data_imp._man;
+%let data_imp_man_t = &data_imp_man._t;
 %let data_imp_mi = &data_imp._mi;
+%let data_imp_mi_t = &data_imp_mi._t;
 %let contents = &data_og._contents;
 %let contents_trim = &contents._trim;
+%let contents_trans = &contents._trans;
 %let corr = &data_og._corr;
 %let varname = name;
 %let key = INDEX;				*Primary, foreign, or other key;
@@ -146,6 +154,14 @@ run; quit;
 	data &data_defined.;
 		set &data_defined.;
 			&varname._MF = missing(&varname.);
+	run; quit;
+%mend;
+
+*	Macro for natural log transform;
+%macro transform(varname);
+	data &data_defined.;
+		set &data_defined.;
+			&varname._ln = sign(&varname.) * log(abs(&varname.)+1);
 	run; quit;
 %mend;
 
@@ -380,6 +396,7 @@ run; quit;
 *	Since there are two data sets created (manual and PROC MI) that use
 	the same macro, we define the data set before calling %missing();
 *	NOTE: ORDER OF OPERATIONS MATTERS;
+
 %let data_defined = &data_imp_man.;
 
 *	Impute MMM for missing values;
@@ -410,22 +427,21 @@ run; quit;
 
 *	Since there are two data sets created (manual and PROC MI) that use
 	the same macro, we define the data set before calling %missing();
-%let data_defined = &data_imp_mi.
+
+%let data_defined = &data_imp_mi.;
 
 *	Add in the missing flags;
 data _null_;
 	do i = 1 to num;
-		set &contents. nobs = num;
+		set &contents_trim. nobs = num;
 			call execute('%missing('||name||')');
 	end;
 run; quit;
 
+*	Use PROC MI;
 proc mi data = &data_imp_mi.;
-	EM OUT = &data_imp_mi.;
-	VAR _all_;
-run; quit;
-
-proc print data = &data_imp_mi. (obs = 100);
+	em out = &data_imp_mi. maxiter = 1000;
+	var _all_;
 run; quit;
 
 ***********************************;
@@ -433,9 +449,71 @@ run; quit;
 ***********************************;
 
 *	There are two data sets with original, trimmed, and imputed variables;
-*	Now we transform the variables in these data sets;
+*	Now we create transformed versions of the variables in these data sets;
+*	Now that we have two data sets, the length of the code grows because
+	PROC CONTENTS must be done for each data set;
 
-*	XXX;
+********************;
+*	Create data sets;
+********************;
+
+*	Impute - Manual - Transform;
+data &data_imp_man_t.;
+	set &data_imp_man.;
+run; quit;
+
+*	Impute - PROC MI - Transform;
+data &data_imp_mi_t.;
+	set &data_imp_mi.;
+run; quit;
+
+********************;
+*	Manual;
+********************;
+
+*	PROC CONTENTS;
+proc contents data = &data_imp_man_t. out = &contents_trans._man;
+run; quit;
+
+*	Drop unnecessary variables gained from PROC CONTENTS;
+data &contents_trans._man;
+	set &contents_trans._man(keep = name type length varnum format formatl
+		informat informl just npos nobs);
+run; quit;
+
+%let data_defined = &data_imp_man_t.;
+
+*	Transform variables to log;
+data _null_;
+	do i = 1 to num;
+		set &contents_trans._man nobs = num;
+			call execute('%transform('||name||')');
+	end;
+run; quit;		
+
+********************;
+*	PROC MI;
+********************;
+
+*	PROC CONTENTS;
+proc contents data = &data_imp_mi_t. out = &contents_trans._mi;
+run; quit;
+
+*	Drop unnecessary variables gained from PROC CONTENTS;
+data &contents_trans._mi;
+	set &contents_trans._mi(keep = name type length varnum format formatl
+		informat informl just npos nobs);
+run; quit;
+
+%let data_defined = &data_imp_mi_t.;
+
+*	Transform variables to log;
+data _null_;
+	do i = 1 to num;
+		set &contents_trans._mi nobs = num;
+				call execute('%transform('||name||')');
+	end;
+run; quit;		
 
 **********************************************************************;
 *	Principal Components;
@@ -451,149 +529,88 @@ run; quit;
 	components to keep in regression;
 *	In short, principal components is awesome;
 
-*	XXX;
-
-**********************************************************************;
-*	Models;
-**********************************************************************;
-
-*	Create multiple OLS models for data set;
-*	Four parts to each model:
-	1. Regression
-	2. Calculate residual: absolute value and square
-	3. Calculate MAE & MSE
-	4. View the results;
-
 ***********************************;
-*	Models: Training;
+*	Impute - Manual - Transform;
 ***********************************;
 
-*	1. Create the OLS model;
-proc reg data = [DATA_SET_NAME]
-	outest = [DATA_SET_NAME]_Sum;
-	model &response. = 
-/* Selected Variables */
-	TotalBsmtSF YearBuilt ExterQual_Ex sqftQual_index overallQual_index
-	landslopeGtl_ind GarageArea MasVnrArea total_baths_calc KitchenQual_Ex
-	landcontourLvl_ind FireplaceQu_Gd BsmtQual_TA BsmtQual_Gd BsmtQual_Fa
-	lot_culdsac TotRmsAbvGrd ExterQual_Gd fireplace_ind functional_ind
-	central_air KitchenQual_TA TotalFloorSF lot_frontage HeatingQC_TA
-	ExterCond_Ex
-/*	Options */
-	/ selection = rsquare start = 29 stop = 29 mse adjrsq aic bic cp vif;
-	output out = S_Train predicted = yhat residual = res;
+*	Compute principal components;
+ods graphics on;
+proc princomp data = &data_imp_man_t. out = &data_og._pca_IMPMANT
+	outstat = eigenvectors_IMPMANT plots = scree(unpackpanel);
+run; quit;
+ods graphics off;
+
+***********************************;
+*	Impute - PROC MI - Transform;
+***********************************;
+
+*	Compute principal components;
+ods graphics on;
+proc princomp data = &data_imp_mi_t. out = &data_og._pca_IMPMIT
+	outstat = eigenvectors_IMPMIT plots = scree(unpackpanel);
+run; quit;
+ods graphics off;
+
+**********************************************************************;
+*	Model: Impute - Manual - Transform;
+**********************************************************************;
+
+*	Regression;
+proc reg data = &data_og._pca_IMPMANT plots = diagnostics(unpack);
+	model &response. = Prin1-Prin16 / vif;
+	output out = &data_og._pca_IMPMANT_Model predicted = yhat residual = res;
 run; quit;
 
-*	2. Although residual is output, want to be sure to calculate it
-	where it is not missing - SAS seems to skip this;
-data [DATA_SET_NAME]_Res;
-	set [DATA_SET_NAME];
-	res = (&response. - yhat);
+*	Calculate residual: absolute value and square;
+data &data_og._pca_IMPMANT_Res;
+	set &data_og._pca_IMPMANT_Model;
 	where res is not missing;
 	abs_res = abs(res);
 	square_res = (res**2);
 run; quit;
 
-*	3. MSE used for predictive modeling IS A DIFFERENT CALCULATION than
-	MSE used in statistics and PROC REG, so must calculate it here;
-proc means data = [DATA_SET_NAME]_Res mean nway noprint;
+*	Calculate MAE & MSE;
+proc means data = &data_og._pca_IMPMANT_Res mean nway nmiss;
 	class train;
 	var abs_res square_res;
-	output out = [DATA_SET_NAME]_EM
+	output out = &data_og._pca_IMPMANT_EM
 	mean(abs_res) = MAE
 	mean(square_res) = MSE;
 run; quit;
 
-*	4. View the results;
-proc print data = [DATA_SET_NAME]_EM;
+*	View the results;
+proc print data = &data_og._pca_IMPMANT_EM;
 run; quit;
 
-***********************************;
-*	Models: Test;
-***********************************;
+**********************************************************************;
+*	Model: Impute - PROC MI - Transform;
+**********************************************************************;
 
-*	1. Create the OLS model;
-proc reg data = [DATA_SET_NAME]
-	outest = [DATA_SET_NAME]_Sum;
-	model &response. = 
-/* Selected Variables */
-	TotalBsmtSF YearBuilt ExterQual_Ex sqftQual_index overallQual_index
-	landslopeGtl_ind GarageArea MasVnrArea total_baths_calc KitchenQual_Ex
-	landcontourLvl_ind FireplaceQu_Gd BsmtQual_TA BsmtQual_Gd BsmtQual_Fa
-	lot_culdsac TotRmsAbvGrd ExterQual_Gd fireplace_ind functional_ind
-	central_air KitchenQual_TA TotalFloorSF lot_frontage HeatingQC_TA
-	ExterCond_Ex
-/*	Options */
-	/ selection = rsquare start = 29 stop = 29 mse adjrsq aic bic cp vif;
-	output out = S_Train predicted = yhat residual = res;
+*	Regression;
+proc reg data = &data_og._pca_IMPMIT plots = diagnostics(unpack);
+	model &response. = Prin1-Prin16 / vif;
+	output out = &data_og._pca_IMPMIT_Model predicted = yhat residual = res;
 run; quit;
 
-*	2. Although residual is output, want to be sure to calculate it
-	where it is not missing - SAS seems to skip this;
-data [DATA_SET_NAME]_Res;
-	set [DATA_SET_NAME];
-	res = (&response. - yhat);
+*	Calculate residual: absolute value and square;
+data &data_og._pca_IMPMIT_Res;
+	set &data_og._pca_IMPMIT_Model;
 	where res is not missing;
 	abs_res = abs(res);
 	square_res = (res**2);
 run; quit;
 
-*	3. MSE used for predictive modeling IS A DIFFERENT CALCULATION than
-	MSE used in statistics and PROC REG, so must calculate it here;
-proc means data = [DATA_SET_NAME]_Res mean nway noprint;
-	class test;
+*	Calculate MAE & MSE;
+proc means data = &data_og._pca_IMPMIT_Res mean nway nmiss;
+	class train;
 	var abs_res square_res;
-	output out = [DATA_SET_NAME]_EM
+	output out = &data_og._pca_IMPMIT_EM
 	mean(abs_res) = MAE
 	mean(square_res) = MSE;
 run; quit;
 
-*	4. View the results;
-proc print data = [DATA_SET_NAME]_EM;
-run; quit;
-
-***********************************;
-*	Models: Random;
-***********************************;
-
-*	1. Create the OLS model;
-proc reg data = [DATA_SET_NAME]
-	outest = [DATA_SET_NAME]_Sum;
-	model &response. = 
-/* Selected Variables */
-	TotalBsmtSF YearBuilt ExterQual_Ex sqftQual_index overallQual_index
-	landslopeGtl_ind GarageArea MasVnrArea total_baths_calc KitchenQual_Ex
-	landcontourLvl_ind FireplaceQu_Gd BsmtQual_TA BsmtQual_Gd BsmtQual_Fa
-	lot_culdsac TotRmsAbvGrd ExterQual_Gd fireplace_ind functional_ind
-	central_air KitchenQual_TA TotalFloorSF lot_frontage HeatingQC_TA
-	ExterCond_Ex
-/*	Options */
-	/ selection = rsquare start = 29 stop = 29 mse adjrsq aic bic cp vif;
-	output out = S_Train predicted = yhat residual = res;
-run; quit;
-
-*	2. Although residual is output, want to be sure to calculate it
-	where it is not missing - SAS seems to skip this;
-data [DATA_SET_NAME]_Res;
-	set [DATA_SET_NAME];
-	res = (&response. - yhat);
-	where res is not missing;
-	abs_res = abs(res);
-	square_res = (res**2);
-run; quit;
-
-*	3. MSE used for predictive modeling IS A DIFFERENT CALCULATION than
-	MSE used in statistics and PROC REG, so must calculate it here;
-proc means data = [DATA_SET_NAME]_Res mean nway noprint;
-	class random;
-	var abs_res square_res;
-	output out = [DATA_SET_NAME]_EM
-	mean(abs_res) = MAE
-	mean(square_res) = MSE;
-run; quit;
-
-*	4. View the results;
-proc print data = [DATA_SET_NAME]_EM;
+*	View the results;
+proc print data = &data_og._pca_IMPMIT_EM;
 run; quit;
 
 **********************************************************************;
@@ -609,16 +626,8 @@ run; quit;
 *	Actually do not need to do anything here because models are coded
 	to output scoring;
 
-*	Another way to get an output table;
-*	Commented out so code will execute without issue;
-/*
-proc print data = [DATA_SET_NAME];
-	var _IN_ _P_ _EDF_ _RSQ_ _ADJRSQ_ _CP_ _AIC_ _BIC_ _MSE_;
-run; quit;
-*/
-
 **********************************************************************;
-*	Output Accuracy;
+*	Operational Validation;
 **********************************************************************;
 *	Create specific format, freq, and tables for model validation;
 *	How many of the predicted values for response variable were within
@@ -634,14 +643,31 @@ proc format;
 	;
 run;
 
-data [DATA_SET_NAME];
-	set [DATA_SET_NAME];
+***********************************;
+*	Model: Impute - Manual - Transform;
+***********************************;
+data &data_og._pca_IMPMANT_OV;
+	set &data_og._pca_IMPMANT;
 	OV = abs(((yhat-log_test_response)/log_test_response));
 	Prediction_Grade = put(OV, Prediction_Grade.);
 	if Prediction_Grade = 'Missing' then delete;
 run; quit;
 
-proc freq data = [DATA_SET_NAME];
+proc freq data = &data_og._pca_IMPMANT_OV;
+	tables Prediction_Grade;
+run; quit;
+
+***********************************;
+*	Model: Impute - PROC MI - Transform;
+***********************************;
+data &data_og._pca_IMPMIT_OV;
+	set &data_og._pca_IMPMIT;
+	OV = abs(((yhat-log_test_response)/log_test_response));
+	Prediction_Grade = put(OV, Prediction_Grade.);
+	if Prediction_Grade = 'Missing' then delete;
+run; quit;
+
+proc freq data = &data_og._pca_IMPMIT_OV;
 	tables Prediction_Grade;
 run; quit;
 
