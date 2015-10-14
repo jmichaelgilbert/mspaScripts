@@ -460,7 +460,7 @@ run; quit;
 
 *	Regression;
 proc reg data = cv_data plots = diagnostics(unpack);
-	model &response. = Prin1-Prin15 / vif;
+	model &response. = Prin1-Prin16 / vif;
 	output out = pca_all_response predicted = yhat residual = res;
 run; quit;
 
@@ -491,7 +491,7 @@ run; quit;
 
 *	Regression;
 proc reg data = cv_data plots = diagnostics(unpack);
-	model train_&response. = Prin1-Prin15 / vif;
+	model train_&response. = Prin1-Prin16 / vif;
 	output out = pca_train_response predicted = yhat residual = res;
 run; quit;
 
@@ -523,7 +523,7 @@ run; quit;
 
 *	Regression;
 proc reg data = cv_data plots = diagnostics(unpack);
-	model test_&response. = Prin1-Prin15 / vif;
+	model test_&response. = Prin1-Prin16 / vif;
 	output out = pca_test_response predicted = yhat residual = res;
 run; quit;
 
@@ -559,7 +559,7 @@ run; quit;
 
 *	Regression;
 proc reg data = cv_data plots = diagnostics(unpack);
-	model &response._ln = Prin1-Prin15 / vif;
+	model &response._ln = Prin1-Prin16 / vif;
 	output out = pca_all_ln predicted = yhat residual = res;
 run; quit;
 
@@ -590,7 +590,7 @@ run; quit;
 
 *	Regression;
 proc reg data = cv_data plots = diagnostics(unpack);
-	model train_&response._ln = Prin1-Prin15 / vif;
+	model train_&response._ln = Prin1-Prin16 / vif;
 	output out = pca_train_ln predicted = yhat residual = res;
 run; quit;
 
@@ -622,7 +622,7 @@ run; quit;
 
 *	Regression;
 proc reg data = cv_data plots = diagnostics(unpack);
-	model test_&response._ln = Prin1-Prin15 / vif;
+	model test_&response._ln = Prin1-Prin16 / vif;
 	output out = pca_test_ln predicted = yhat residual = res;
 run; quit;
 
