@@ -937,6 +937,69 @@ proc freq data = sw_ln_response_OV;
 run; quit;
 
 **********************************************************************;
+*	AVS Models: Normal Response (REDUX);
+**********************************************************************;
+
+proc reg data = cv_data plots = diagnostics;
+	model &response. = 
+	TEAM_:
+	MF_:
+	/ selection = stepwise slentry = 0.15 slstay = 0.15 vif;
+	output out = swr_all_response predicted = yhat residual = res;
+run; quit;
+
+*	Chosen AVS Model;
+proc reg data = cv_data plots = diagnostics;
+	model &response. = 
+	TEAM_BATTING_H
+	TEAM_FIELDING_E
+	TEAM_BASERUN_SB_T99
+	TEAM_BATTING_2B_T75
+	TEAM_BATTING_3B_T95
+	TEAM_BATTING_BB_T75
+	TEAM_FIELDING_DP_T99
+	TEAM_BASERUN_SB_ln
+	TEAM_FIELDING_DP_ln
+	TEAM_FIELDING_E_T90_ln
+	/ selection = rsquare start = 10 stop = 10 adjrsq aic bic cp vif;
+	output out = swr_all_response predicted = yhat residual = res;
+run; quit;
+
+*	Calculate residual: absolute value and square;
+data swr_all_response_res;
+	set swr_all_response;
+	res = (&response. - yhat);
+	where res is not missing;
+	abs_res = abs(res);
+	square_res = (res**2);
+run; quit;
+
+*	Calculate MAE & MSE;
+proc means data = swr_all_response_res mean nway nmiss;
+	var abs_res square_res;
+	output out = swr_all_response_em
+	mean(abs_res) = MAE
+	mean(square_res) = MSE;
+run; quit;
+
+*	View the results;
+proc print data = swr_all_response_em;
+run; quit;
+
+*	Operational Validation;
+data swr_all_response_OV;
+	set swr_all_response;
+	OV = abs(((yhat-&response.)/&response.));
+	Prediction_Grade = put(OV, Prediction_Grade.);
+	if Prediction_Grade = 'Missing' then delete;
+run; quit;
+
+proc freq data = swr_all_response_OV;
+	tables Prediction_Grade;
+	title "Operational Validation of &response.";
+run; quit;
+
+**********************************************************************;
 *	PCA Models: Normal Response;
 **********************************************************************;
 
@@ -1027,7 +1090,7 @@ proc freq data = pca_all_ln_OV;
 run; quit;
 
 ***********************************;
-*	Models: Champion Model;
+*	Models: Champion Model (REDUX);
 *	AVS Stepwise Selected;
 *	Cross Validation;
 ***********************************;
@@ -1201,10 +1264,10 @@ proc freq data = sw_test_ln_response_OV;
 run; quit;
 
 ***********************************;
-*	4. Truncation;
+*	4. Truncation & Twist;
 ***********************************;
 
-*	Testing effects of truncating yhat;
+*	Testing effects of truncating and rounding yhat;
 *	Use max(log(120)) and min(log(30));
 
 *	Create data set and truncate;
@@ -1213,23 +1276,97 @@ data sw_ln_response_trim;
 	yhat = max(min(yhat,log(120)),log(30));
 run; quit;
 
-*	PROC MEANS to validate output;
-proc means data = sw_ln_response_trim NOLABELS
-    NMISS N MEAN MODE STD SKEW
-    P1 P5 P10 P25 P50 P75 P90 P95 P99 MIN MAX QRANGE;
+*	Transform from log(response) to e**response;
+data sw_ln_response_twist;
+	set sw_ln_response_trim;
+	yhat_t = CONSTANT('E')**yhat;
+run; quit;
+
+*	Round off as teams cannot have 1.5 wins;
+data sw_ln_response_twist;
+	set sw_ln_response_twist;
+	yhat_t = ROUND(yhat_t, 1);
 run; quit;
 
 *	Operational Validation;
-data sw_ln_response_trim_OV;
-	set sw_ln_response_trim;
-	OV = abs(((yhat-&response._ln)/&response._ln));
+data sw_ln_response_twist_OV;
+	set sw_ln_response_twist;
+	OV = abs(((yhat_t-&response.)/&response.));
 	Prediction_Grade = put(OV, Prediction_Grade.);
 	if Prediction_Grade = 'Missing' then delete;
 run; quit;
 
-proc freq data = sw_ln_response_trim_OV;
+proc freq data = sw_ln_response_twist_OV;
 	tables Prediction_Grade;
 	title "Operational Validation of &response._LN";
+run; quit;
+
+**********************************************************************;
+*	Models: Champion Model (REDUX);
+*	AVS Stepwise Selected;;
+**********************************************************************;
+
+*	Chosen AVS Model;
+proc reg data = cv_data plots = diagnostics;
+	model &response. = 
+	TEAM_BATTING_H
+	TEAM_FIELDING_E
+	TEAM_BASERUN_SB_T99
+	TEAM_BATTING_2B_T75
+	TEAM_BATTING_3B_T95
+	TEAM_BATTING_BB_T75
+	TEAM_FIELDING_DP_T99
+	TEAM_BASERUN_SB_ln
+	TEAM_FIELDING_DP_ln
+	TEAM_FIELDING_E_T90_ln
+	/ selection = rsquare start = 10 stop = 10 adjrsq aic bic cp vif;
+	output out = swr_all_response predicted = yhat residual = res;
+run; quit;
+
+*	Calculate residual: absolute value and square;
+data swr_all_response_res;
+	set swr_all_response;
+	res = (&response. - yhat);
+	where res is not missing;
+	abs_res = abs(res);
+	square_res = (res**2);
+run; quit;
+
+*	Calculate MAE & MSE;
+proc means data = swr_all_response_res mean nway nmiss;
+	var abs_res square_res;
+	output out = swr_all_response_em
+	mean(abs_res) = MAE
+	mean(square_res) = MSE;
+run; quit;
+
+*	View the results;
+proc print data = swr_all_response_em;
+run; quit;
+
+*	Create data set and truncate;
+data swr_all_response_twist;
+	set swr_all_response;
+	yhat = max(min(yhat, 120), 30);
+run; quit;
+
+*	Round off as teams cannot have 1.5 wins;
+data swr_all_response_twist;
+	set swr_all_response_twist;
+	yhat = ROUND(yhat, 1);
+run; quit;
+
+*	Operational Validation;
+data swr_all_response_twist_OV;
+	set swr_all_response_twist;
+	OV = abs(((yhat-&response.)/&response.));
+	Prediction_Grade = put(OV, Prediction_Grade.);
+	if Prediction_Grade = 'Missing' then delete;
+run; quit;
+
+proc freq data = swr_all_response_twist_OV;
+	tables Prediction_Grade;
+	title "Operational Validation of &response.";
 run; quit;
 
 **********************************************************************;
