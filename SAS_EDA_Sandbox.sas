@@ -1,37 +1,93 @@
 **********************************************************************;
 *	SAS_EDA_Sandbox;
-*	Last updated: 2015-10-13 by MJG;
-**********************************************************************;
-
-**********************************************************************;
-*	TO DO;
-*	Drop MF (missing flag) variables that undergo a ln transform;
-*	Need to handle signs or change signs of specific variables;
+*	Last updated: 2015-10-21 by MJG;
 **********************************************************************;
 
 *	Generic macros to help conduct EDA on any data set;
 *	This section must be modified by the user;
 
-*	Connect to data;
-libname mydata '/sscc/home/m/mga293/411-DL/SAS_Data/' access = readonly;
+libname mydata '/folders/myfolders/sasuser.v94' access = readonly;
 
-*	Shorten data name, save to work library;
-data MB;
+**********************************************************************;
+*	Declare data set;
+**********************************************************************;
+%let data_og = MB;
+
+*	Shorten data set name, save to work library;
+data &data_og.;
 	set mydata.moneyball;
 run; quit;
 
 **********************************************************************;
-*	SAS Macros;
+**********************************************************************;
+*	Split data for cross-validation;
+**********************************************************************;
 **********************************************************************;
 
+*	Split the data create variables and flags as necessary;
+data &data_og.;
+	set &data_og.;
+	U = uniform(123);
+	if (U <= 0.70) then TRAIN = 1;
+		else TRAIN = 0;
+	if TRAIN = 0 then TEST = 1;
+		else TEST = 0;
+run; quit;
+
+*	Use PROC FREQ to determine how close we are to 70/30 split;
+proc freq data = &data_og.;
+	tables train test;
+run; quit;
+
+***********************************;
+*	Training;
+***********************************;
+
+*	Create training data set;
+data &data_og._70;
+	set &data_og.;
+	where train = 1;
+run; quit;
+
+*	Drop unnecessary variables;
+data &data_og._70;
+	set &data_og._70 (drop = u train test);
+run; quit;
+
+***********************************;
+*	Test;
+***********************************;
+
+*	Create test data set;
+data &data_og._30;
+	set &data_og.;
+	where test = 1;
+run; quit;
+
+*	Drop unnecessary variables;
+data &data_og._30;
+	set &data_og._30 (drop = u train test);
+run; quit;
+
+**********************************************************************;
+**********************************************************************;
+*	SAS Macros;
+**********************************************************************;
+**********************************************************************;
+
+**********************************************************************;
 *	Globals;
+**********************************************************************;
+
+*	Declare data set to be used;
+*	Either full, 70-split, or 30-split;
 %let data_og = MB;
+
+*	Declare subsequent macro variables;
 %let data_trim = &data_og._trim;
 %let data_imp = &data_trim._imp;
-%let data_imp_man = &data_imp._man;
-%let data_imp_man_t = &data_imp_man._t;
-%let data_imp_mi = &data_imp._mi;
-%let data_imp_mi_t = &data_imp_mi._t;
+%let data_trans = &data_imp._trans;
+%let data_pca = &data_trans._pca;
 %let contents = &data_og._contents;
 %let contents_trim = &contents._trim;
 %let contents_trans = &contents._trans;
@@ -40,19 +96,25 @@ run; quit;
 %let key = INDEX;				*Primary, foreign, or other key;
 %let response = TARGET_WINS;	*Response Variable;
 
+**********************************************************************;
 *	Macro to drop P-values and N-values from CORR output;
+**********************************************************************;
 %macro corr(varname);
 	data long_&corr.;
 		set long_&corr.;
 		if _name_ = "N&varname." then delete;
+			else if _name_ = "N&response." then delete;
 			else if _name_ = "P&varname." then delete;
+			else if _name_ = "P&response." then delete;
 	run; quit;
 %mend;
 
+**********************************************************************;
 *	Macro for scatterplots;
+**********************************************************************;
 %macro scatter(varname);
 	ods graphics on;
-	proc sgscatter data = &data_og.;
+	proc sgscatter data = &data_defined.;
 		compare x = &varname. y = &response. / loess reg;
 		title "Scatter Plot of &response. by &varname.";
 		title2 "with LOESS smoother";
@@ -60,9 +122,11 @@ run; quit;
 	ods graphics off;
 %mend;
 
+**********************************************************************;
 *	Macro for histograms;
+**********************************************************************;
 %macro histogram(varname);
-	proc sgplot data = &data_og.;
+	proc sgplot data = &data_defined.;
 		histogram &varname. / transparency = 0.5;
 		density &varname. / type = normal;
 		density &varname. / type = kernel;
@@ -71,16 +135,20 @@ run; quit;
 	run; quit;
 %mend;
 
+**********************************************************************;
 *	Macro for boxplots;
+**********************************************************************;
 %macro boxplot(varname);
-	proc sgplot data = &data_og.;
+	proc sgplot data = &data_defined.;
 		vbox &varname.;
 		title "Boxplot of &varname.";
 	run; quit;
 %mend;
 
+**********************************************************************;
 *	Macro to output summary stats from PROC MEANS across all variables;
 *	As designed, must be used in conjunction with PROC TRANSPOSE;
+**********************************************************************;
 %macro means(varname);
 	proc means data = &data_defined. noprint;
 	output out = &varname. (drop = _freq_ _type_)
@@ -107,7 +175,9 @@ run; quit;
 run; quit;
 %mend;
 
+**********************************************************************;
 *	Macro to transpose summary stats from %macro means(varname);
+**********************************************************************;
 %macro transpose(varname);
 	proc transpose data = &varname. out = &varname._t;
 		var _numeric_;
@@ -115,10 +185,12 @@ run; quit;
 	run; quit;
 %mend;
 
+**********************************************************************;
 *	Macro to store summary stats from %macro means(varname);
 *	Strip will remove leading or trailing space;
 *	CALL SYMPUTX differs from CALL SYMPUT in that you specify
 	where the macros are stored (e.g. local or global);
+**********************************************************************;
 %macro symputx(varname);
 	data _null_;
 		set &varname._t;
@@ -126,7 +198,9 @@ run; quit;
 	run; quit;
 %mend;
 
-*	Trim Macro;
+**********************************************************************;
+*	Macro for trims of data;
+**********************************************************************;
 %macro trim(varname);
 	data &data_trim.;
 		set &data_trim.;
@@ -137,10 +211,13 @@ run; quit;
 	run; quit;
 %mend;
 
+**********************************************************************;
 *	Macro for imputes (mean, median, mode);
+*	Note: not used in this code, PROC MI makes this obsolete;
+**********************************************************************;
 %macro impute(varname);
-	data &data_imp_man.;
-		set &data_imp_man.;
+	data &data_imp.;
+		set &data_imp.;
 			&varname._IMEW 	= &varname.;
 				if missing(&varname._IMEW) then &varname._IMEW = &&&varname._mean;
 			&varname._IMED 	= &varname.;
@@ -150,34 +227,31 @@ run; quit;
 	run; quit;
 %mend;
 
+**********************************************************************;
 *	Macro for missing flags;
+**********************************************************************;
 %macro missing(varname);
-	data &data_defined.;
-		set &data_defined.;
-			&varname._MF = missing(&varname.);
+	data &data_imp.;
+		set &data_imp.;
+			MF_&varname. = missing(&varname.);
 	run; quit;
 %mend;
 
+**********************************************************************;
 *	Macro for natural log transform;
+**********************************************************************;
 %macro transform(varname);
-	data &data_defined.;
-		set &data_defined.;
+	data &data_trans.;
+		set &data_trans.;
 			&varname._ln = sign(&varname.) * log(abs(&varname.)+1);
 	run; quit;
 %mend;
 
 **********************************************************************;
-*	DATA MUNGING;
 **********************************************************************;
-
-*	Drop primary, foreign, or other key from data set;
-*	Drop other unnecessary variables as necessary;
-*	Not necessary (in fact, avoid if merging on key) but no value add
-	as predictor variable;
-
-data &data_og. (drop = &key.);
-	set &data_og.;
-run; quit;
+*	Initial EDA & Data Preparation on OG data set;
+**********************************************************************;
+**********************************************************************;
 
 **********************************************************************;
 *	PROC CONTENTS (INITIAL);
@@ -193,10 +267,8 @@ run; quit;
 data &contents.;
 	set &contents.(keep = name type length varnum format formatl
 		informat informl just npos nobs);
-run; quit;
-
-*	View contents of data set, more info than OG PROC CONTENTS output;
-proc print data = &contents.;
+		if name = "&response." then delete;
+			else if name = "&key." then delete;
 run; quit;
 
 **********************************************************************;
@@ -208,7 +280,7 @@ run; quit;
 
 ods trace on;
 ods output PearsonCorr = wide_&corr.;
-proc corr data = &data_og.;
+proc corr data = &data_og. (drop = &key.);
 	var _all_;
 	with &response.;
 run; quit;
@@ -233,20 +305,21 @@ data &corr.;
 run; quit;
 
 **********************************************************************;
-*	Scatter, Histogram, Boxplot;
+*	Visual EDA (INITIAL);
 **********************************************************************;
 
 *	Conduct EDA on all _NUMERIC_ variables;
 *	Excludes response variable and any primary, foreign, or other key;
+
+%let data_defined = &data_og.;
+
 data _null_;
 	do i = 1 to num;
 		set &contents. nobs = num;
-			if name = "&response." then delete;
-				else if name = "&key." then delete;
-				else where type = 1;
-					call execute('%scatter('||name||')');
-					call execute('%histogram('||name||')');
-					call execute('%boxplot('||name||')');
+			where type = 1;
+				call execute('%scatter('||name||')');
+				call execute('%histogram('||name||')');
+				call execute('%boxplot('||name||')');
 	end;
 run; quit;
 
@@ -268,12 +341,12 @@ data _null_;
 run; quit;
 
 *	Verify data with PROC MEANS;
-proc means data = &data_defined. NOLABELS
+proc means data = &data_og. NOLABELS
 	NMISS N MEAN MEDIAN MODE STD SKEW 
 	P1 P5 P10 P25 P50 P75 P90 P95 P99 MIN MAX QRANGE;
 run; quit;
 
-*	Verify the macro variables are stored correctly (RE: PROC MEANS);
+*	Verify macro variables are stored correctly;
 %put _local_;		*	All local macro variables;
 %put _global_;		*	All global macro variables;
 %put _user_;		*	All macro variables;
@@ -294,7 +367,7 @@ run; quit;
 *	Trimming;
 ***********************************;
 
-*	Clone the OG data set as trim;
+*	Create the data set;
 data &data_trim.;
 	set &data_og.;
 run; quit;
@@ -323,10 +396,8 @@ run; quit;
 data &contents_trim.;
 	set &contents_trim.(keep = name type length varnum format formatl
 		informat informl just npos nobs);
-run; quit;
-
-*	View contents of data set, more info than OG PROC CONTENTS output;
-proc print data = &contents_trim.;
+		if name = "&response." then delete;
+			else if name = "&key." then delete;
 run; quit;
 
 ***********************************;
@@ -350,52 +421,17 @@ run; quit;
 *	Impute & Flags;
 ***********************************;
 
-*	Conduct imputes on two data sets, cloned from &data_og.;
-*	First creates new variables with MEAN, MEDIAN, MODE for missings;
-*	Second uses PROC MI to replace missing values in current variables;
-*	Benefit of keeping these separate is to see how well model does with
-	manual imputes of central tendency vs. programmatic imputes;
+*	Impute using PROC MI to replace missing values in current variables;
+*	NOTE ON FLAGS: for PROC MI, flag before as PROC MI will REPLACE;
 
-*	NOTE ON FLAGS;
-*	For manual, flag after to capture across all variables;
-*	For PROC MI, flag before because PROC MI will REPLACE;
-
-********************;
-*	Create data sets;
-********************;
-
-*	Parent:	impute;
+*	Create the data set;
 data &data_imp.;
 	set &data_trim.;
 run; quit;
 
-*	Child:	manual impute;
-data &data_imp_man.;
-	set &data_imp.;
-run; quit;
-
-*	Child:	PROC MI impute;
-data &data_imp_mi.;
-	set &data_imp.;
-run; quit;
-
 ********************;
-*	Manual;
+*	Missing Flags;
 ********************;
-
-*	Since there are two data sets created (manual and PROC MI) that use
-	the same macro, we define the data set before calling %missing();
-*	NOTE: ORDER OF OPERATIONS MATTERS;
-
-%let data_defined = &data_imp_man.;
-
-*	Impute MMM for missing values;
-data _null_;
-	do i = 1 to num;
-		set &contents_trim. nobs = num;
-			call execute('%impute('||name||')');
-	end;
-run; quit;				
 
 *	Add in the missing flags;
 data _null_;
@@ -409,22 +445,9 @@ run; quit;
 *	PROC MI;
 ********************;
 
-*	Since there are two data sets created (manual and PROC MI) that use
-	the same macro, we define the data set before calling %missing();
-
-%let data_defined = &data_imp_mi.;
-
-*	Add in the missing flags;
-data _null_;
-	do i = 1 to num;
-		set &contents_trim. nobs = num;
-			call execute('%missing('||name||')');
-	end;
-run; quit;
-
-*	Use PROC MI;
-proc mi data = &data_imp_mi.;
-	em out = &data_imp_mi. maxiter = 1000;
+*	Execute PROC MI;
+proc mi data = &data_imp.;
+	em out = &data_imp. maxiter = 1000;
 	var _all_;
 run; quit;
 
@@ -432,227 +455,156 @@ run; quit;
 *	Transform;
 ***********************************;
 
-*	There are two data sets with original, trimmed, and imputed variables;
 *	Now we create transformed versions of the variables in these data sets;
-*	Now that we have two data sets, the length of the code grows because
-	PROC CONTENTS must be done for each data set;
+*	Use the PROC CONTENTS (REDUX) as that allows us to skip MF_ transforms;
 
-********************;
-*	Create data sets;
-********************;
-
-*	Impute - Manual - Transform;
-data &data_imp_man_t.;
-	set &data_imp_man.;
+*	Create the data set;
+data &data_trans.;
+	set &data_imp.;
 run; quit;
-
-*	Impute - PROC MI - Transform;
-data &data_imp_mi_t.;
-	set &data_imp_mi.;
-run; quit;
-
-********************;
-*	Manual;
-********************;
-
-*	PROC CONTENTS;
-proc contents data = &data_imp_man_t. out = &contents_trans._man;
-run; quit;
-
-*	Drop unnecessary variables gained from PROC CONTENTS;
-data &contents_trans._man;
-	set &contents_trans._man(keep = name type length varnum format formatl
-		informat informl just npos nobs);
-run; quit;
-
-%let data_defined = &data_imp_man_t.;
 
 *	Transform variables to log;
 data _null_;
 	do i = 1 to num;
-		set &contents_trans._man nobs = num;
-			call execute('%transform('||name||')');
-	end;
-run; quit;		
-
-********************;
-*	PROC MI;
-********************;
-
-*	PROC CONTENTS;
-proc contents data = &data_imp_mi_t. out = &contents_trans._mi;
-run; quit;
-
-*	Drop unnecessary variables gained from PROC CONTENTS;
-data &contents_trans._mi;
-	set &contents_trans._mi(keep = name type length varnum format formatl
-		informat informl just npos nobs);
-run; quit;
-
-%let data_defined = &data_imp_mi_t.;
-
-*	Transform variables to log;
-data _null_;
-	do i = 1 to num;
-		set &contents_trans._mi nobs = num;
+		set &contents_trim. nobs = num;
 				call execute('%transform('||name||')');
 	end;
 run; quit;		
 
 **********************************************************************;
-*	Principal Components;
+**********************************************************************;
+*	Revisit visual and quantitative EDA on current data set;
+**********************************************************************;
 **********************************************************************;
 
-*	Since there are so many variables across these two data sets, manually
-	building models will be time consuming, even when using automated
-	variable selection techniques;
-*	Instead, use principal components to reduce the dimensionality of
-	the data, and create orthogonal predictor variables (IID);
+***********************************;
+*	Visual EDA (REDUX);
+***********************************;
+
+*	Conduct EDA on all _NUMERIC_ variables;
+*	Excludes response variable and any primary, foreign, or other key;
+
+%let data_defined = &data_trans.;
+
+data _null_;
+	do i = 1 to num;
+		set &contents_trim. nobs = num;
+			else where type = 1;
+				call execute('%scatter('||name||')');
+				call execute('%histogram('||name||')');
+				call execute('%boxplot('||name||')');
+	end;
+run; quit;
+
+***********************************;
+*	PROC CONTENTS (REDUX);
+***********************************;
+
+*	Intermediate step after the trans data set is created;
+*	List out the column names and data types for the data set;
+*	This is necessary as almost all macros depend on this output to
+	extract variable names in data set for looping;
+
+proc contents data = &data_trans. out = &contents_trans.;
+run; quit;
+
+*	Drop unnecessary variables gained from PROC CONTENTS;
+data &contents_trans.;
+	set &contents_trans.(keep = name type length varnum format formatl
+		informat informl just npos nobs);
+		if name = "&response." then delete;
+			else if name = "&key." then delete;
+run; quit;
+
+***********************************;
+*	PROC CORR (REDUX);
+***********************************;
+
+*	Use ODS Output to print Pearson's Correlation for data;
+*	Can also specify "outp = &data._corr" in first line of PROC CORR;
+
+ods trace on;
+ods output PearsonCorr = wide_&corr.;
+proc corr data = &data_trans. (drop = &key.);
+	var _all_;
+	with &response.;
+run; quit;
+ods trace off;
+
+*	Transpose to long;
+proc transpose data = wide_&corr. out = long_&corr.;
+run; quit;
+
+*	Drop P-values and N-values from output;
+data _null_;
+	do i = 1 to num;
+		set &contents_trans. nobs = num;
+			call execute('%corr('||name||')');
+	end;
+run; quit;
+
+*	Rename columns and set data back to corr (trans);
+data &corr.;
+	set long_&corr.;
+	COL1 = abs(COL1);
+	if missing(COL1) then delete;
+	rename _NAME_ = Variable COL1 = PPC;
+run; quit;
+
+*	Sort the results;
+proc sort data = &corr.;
+	by descending PPC variable ;
+run; quit;
+
+*	Verify the results;
+proc print data = &corr.;
+run; quit;
+
+**********************************************************************;
+**********************************************************************;
+*	Principal Components;
+**********************************************************************;
+**********************************************************************;
+
+*	Use principal components to reduce the dimensionality of the data,
+	and create orthogonal predictor variables (IID);
 *	This will also handle multicollinearity or VIFs;
 *	Need to manually view scree plot to determine number of principal
 	components to keep in regression;
-*	In short, principal components is awesome;
 
-***********************************;
-*	Impute - Manual - Transform;
-***********************************;
+*	Drop response variable and subs of response, and key;
+data &data_pca.;
+	set &data_trans. (drop = &response.: &key.);
+run; quit;
 
 *	Compute principal components;
 ods graphics on;
-proc princomp data = &data_imp_man_t. out = &data_og._pca_IMPMANT
-	outstat = eigenvectors_IMPMANT plots = scree(unpackpanel);
+proc princomp data = &data_pca. out = &data_pca._output
+	plots = scree(unpackpanel) N = 30;
+	ods output eigenvectors = pca_ev;
 run; quit;
 ods graphics off;
 
-***********************************;
-*	Impute - PROC MI - Transform;
-***********************************;
-
-*	Compute principal components;
-ods graphics on;
-proc princomp data = &data_imp_mi_t. out = &data_og._pca_IMPMIT
-	outstat = eigenvectors_IMPMIT plots = scree(unpackpanel);
-run; quit;
-ods graphics off;
-
-**********************************************************************;
-*	Model: Impute - Manual - Transform;
-**********************************************************************;
-
-*	Regression;
-proc reg data = &data_og._pca_IMPMANT plots = diagnostics(unpack);
-	model &response. = Prin1-Prin16 / vif;
-	output out = &data_og._pca_IMPMANT_Model predicted = yhat residual = res;
+*	Transpose data;
+proc transpose data = pca_ev out = pca_ev_trans;
+	id variable;
 run; quit;
 
-*	Calculate residual: absolute value and square;
-data &data_og._pca_IMPMANT_Res;
-	set &data_og._pca_IMPMANT_Model;
-	where res is not missing;
-	abs_res = abs(res);
-	square_res = (res**2);
-run; quit;
-
-*	Calculate MAE & MSE;
-proc means data = &data_og._pca_IMPMANT_Res mean nway nmiss;
-	class train;
-	var abs_res square_res;
-	output out = &data_og._pca_IMPMANT_EM
-	mean(abs_res) = MAE
-	mean(square_res) = MSE;
-run; quit;
-
-*	View the results;
-proc print data = &data_og._pca_IMPMANT_EM;
+*	Prep for scoring;
+data pca_ev_score;
+	set pca_ev_trans;
+	_TYPE_ = "SCORE";
 run; quit;
 
 **********************************************************************;
-*	Model: Impute - PROC MI - Transform;
+*	Model Prep;
 **********************************************************************;
 
-*	Regression;
-proc reg data = &data_og._pca_IMPMIT plots = diagnostics(unpack);
-	model &response. = Prin1-Prin16 / vif;
-	output out = &data_og._pca_IMPMIT_Model predicted = yhat residual = res;
-run; quit;
-
-*	Calculate residual: absolute value and square;
-data &data_og._pca_IMPMIT_Res;
-	set &data_og._pca_IMPMIT_Model;
-	where res is not missing;
-	abs_res = abs(res);
-	square_res = (res**2);
-run; quit;
-
-*	Calculate MAE & MSE;
-proc means data = &data_og._pca_IMPMIT_Res mean nway nmiss;
-	class train;
-	var abs_res square_res;
-	output out = &data_og._pca_IMPMIT_EM
-	mean(abs_res) = MAE
-	mean(square_res) = MSE;
-run; quit;
-
-*	View the results;
-proc print data = &data_og._pca_IMPMIT_EM;
-run; quit;
-
-**********************************************************************;
-*	Scoring;
-**********************************************************************;
-*	Score multiple models based on Y-hat & error (residual);
-*	Model with smallest %change between MSE and MAE in training and test
-	is selected;
-*	Model may NOT have the highest adjusted R-squared, but for this
-	application model for predictive accuracy not statistical inference;
-*	The model with the highest adjusted R-squared (or other evaluation
-	criterion) may be overfit;
-*	Actually do not need to do anything here because models are coded
-	to output scoring;
-
-**********************************************************************;
-*	Operational Validation;
-**********************************************************************;
-*	Create specific format, freq, and tables for model validation;
-*	How many of the predicted values for response variable were within
-	5%, 10%, and 15% of actuals on training and test?;
-
-proc format;
-	value $Prediction_Grade (default = 7)
-	. = 'Missing'
-	0.0 - 0.05 = 'Grade 0'
-	0.05 <- 0.10 = 'Grade 1'
-	0.10 <- 0.15 = 'Grade 2'
-	0.15 <- high = 'Grade 3'
-	;
-run;
-
-***********************************;
-*	Model: Impute - Manual - Transform;
-***********************************;
-data &data_og._pca_IMPMANT_OV;
-	set &data_og._pca_IMPMANT;
-	OV = abs(((yhat-&response.)/&response.));
-	Prediction_Grade = put(OV, Prediction_Grade.);
-	if Prediction_Grade = 'Missing' then delete;
-run; quit;
-
-proc freq data = &data_og._pca_IMPMANT_OV;
-	tables Prediction_Grade;
-run; quit;
-
-***********************************;
-*	Model: Impute - PROC MI - Transform;
-***********************************;
-data &data_og._pca_IMPMIT_OV;
-	set &data_og._pca_IMPMIT;
-	OV = abs(((yhat-&response.)/&response.));
-	Prediction_Grade = put(OV, Prediction_Grade.);
-	if Prediction_Grade = 'Missing' then delete;
-run; quit;
-
-proc freq data = &data_og._pca_IMPMIT_OV;
-	tables Prediction_Grade;
+*	Merge output, bring response and key back in;
+*	Add in log transform of response;
+data cv_data;
+	merge &data_pca._output &data_og. (keep = &response. &key.);
+	&response._ln = sign(&response.) * log(abs(&response.)+1);
 run; quit;
 
 **********************************************************************;
