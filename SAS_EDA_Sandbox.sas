@@ -489,7 +489,7 @@ run; quit;
 data _null_;
 	do i = 1 to num;
 		set &contents_trim. nobs = num;
-			else where type = 1;
+			where type = 1;
 				call execute('%scatter('||name||')');
 				call execute('%histogram('||name||')');
 				call execute('%boxplot('||name||')');
