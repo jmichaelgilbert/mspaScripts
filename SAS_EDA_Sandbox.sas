@@ -69,6 +69,15 @@ data &data_og._30;
 	set &data_og._30 (drop = u train test);
 run; quit;
 
+***********************************;
+*	Clean-up;
+***********************************;
+
+*	Drop unnecessary variables;
+data &data_og.;
+	set &data_og. (drop = u train test);
+run; quit;
+
 **********************************************************************;
 **********************************************************************;
 *	SAS Macros;
@@ -93,8 +102,8 @@ run; quit;
 %let contents_trans = &contents._trans;
 %let corr = &data_og._corr;
 %let varname = name;
+%let key = INDEX;				*Primary, foreign, or other key;
 %let response = TARGET_WINS;	*Response Variable;
-%let key = INDEX;		*Primary, foreign, or other key;
 
 **********************************************************************;
 *	Macro to drop P-values and N-values from CORR output;

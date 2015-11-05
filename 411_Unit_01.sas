@@ -802,7 +802,7 @@ proc freq data = ols_ln_response_OV;
 run; quit;
 
 **********************************************************************;
-*	AVS Models: Normal Response;
+*	AVS Models: Stepwise Normal Response;
 **********************************************************************;
 
 *	Initial AVS Model;
@@ -866,7 +866,7 @@ proc freq data = sw_all_response_OV;
 run; quit;
 
 **********************************************************************;
-*	AVS Models: Log Response;
+*	AVS Models: Stepwise Log Response;
 **********************************************************************;
 
 *	Initial AVS Model;
@@ -937,7 +937,7 @@ proc freq data = sw_ln_response_OV;
 run; quit;
 
 **********************************************************************;
-*	AVS Models: Normal Response (REDUX);
+*	AVS Models: Stepwise Normal Response (REDUX);
 **********************************************************************;
 
 proc reg data = cv_data plots = diagnostics;
@@ -995,6 +995,138 @@ data swr_all_response_OV;
 run; quit;
 
 proc freq data = swr_all_response_OV;
+	tables Prediction_Grade;
+	title "Operational Validation of &response.";
+run; quit;
+
+**********************************************************************;
+*	AVS Models: Backward Normal Response;
+**********************************************************************;
+
+*	Initial AVS Model;
+proc reg data = cv_data plots = diagnostics;
+	model &response. = 
+	TEAM_:
+	MF_:
+	/ selection = backward slstay = 0.15 vif;
+	output out = bw_all_response predicted = yhat residual = res;
+run; quit;
+
+/*
+*	Chosen AVS Model;
+proc reg data = cv_data plots = diagnostics;
+	model &response. = 
+	TEAM_BATTING_H
+	TEAM_FIELDING_E
+	TEAM_BASERUN_SB_T99
+	TEAM_BATTING_2B_T75
+	TEAM_BATTING_3B_T95
+	TEAM_BATTING_BB_T75
+	TEAM_FIELDING_DP_T99
+	TEAM_BASERUN_SB_ln
+	TEAM_FIELDING_DP_ln
+	TEAM_FIELDING_E_T90_ln
+	/ selection = rsquare start = 10 stop = 10 adjrsq aic bic cp vif;
+	output out = bw_all_response predicted = yhat residual = res;
+run; quit;
+*/
+
+*	Calculate residual: absolute value and square;
+data bw_all_response_res;
+	set bw_all_response;
+	res = (&response. - yhat);
+	where res is not missing;
+	abs_res = abs(res);
+	square_res = (res**2);
+run; quit;
+
+*	Calculate MAE & MSE;
+proc means data = bw_all_response_res mean nway nmiss;
+	var abs_res square_res;
+	output out = bw_all_response_em
+	mean(abs_res) = MAE
+	mean(square_res) = MSE;
+run; quit;
+
+*	View the results;
+proc print data = bw_all_response_em;
+run; quit;
+
+*	Operational Validation;
+data bw_all_response_OV;
+	set bw_all_response;
+	OV = abs(((yhat-&response.)/&response.));
+	Prediction_Grade = put(OV, Prediction_Grade.);
+	if Prediction_Grade = 'Missing' then delete;
+run; quit;
+
+proc freq data = bw_all_response_OV;
+	tables Prediction_Grade;
+	title "Operational Validation of &response.";
+run; quit;
+
+**********************************************************************;
+*	AVS Models: Forward Normal Response;
+**********************************************************************;
+
+*	Initial AVS Model;
+proc reg data = cv_data plots = diagnostics;
+	model &response. = 
+	TEAM_:
+	MF_:
+	/ selection = forward slentry = 0.15 vif;
+	output out = fw_all_response predicted = yhat residual = res;
+run; quit;
+
+/*
+*	Chosen AVS Model;
+proc reg data = cv_data plots = diagnostics;
+	model &response. = 
+	TEAM_BATTING_H
+	TEAM_FIELDING_E
+	TEAM_BASERUN_SB_T99
+	TEAM_BATTING_2B_T75
+	TEAM_BATTING_3B_T95
+	TEAM_BATTING_BB_T75
+	TEAM_FIELDING_DP_T99
+	TEAM_BASERUN_SB_ln
+	TEAM_FIELDING_DP_ln
+	TEAM_FIELDING_E_T90_ln
+	/ selection = rsquare start = 10 stop = 10 adjrsq aic bic cp vif;
+	output out = bw_all_response predicted = yhat residual = res;
+run; quit;
+*/
+
+*	Calculate residual: absolute value and square;
+data fw_all_response_res;
+	set fw_all_response;
+	res = (&response. - yhat);
+	where res is not missing;
+	abs_res = abs(res);
+	square_res = (res**2);
+run; quit;
+
+*	Calculate MAE & MSE;
+proc means data = fw_all_response_res mean nway nmiss;
+	var abs_res square_res;
+	output out = fw_all_response_em
+	mean(abs_res) = MAE
+	mean(square_res) = MSE;
+run; quit;
+
+*	View the results;
+proc print data = fw_all_response_em;
+run; quit;
+
+*	Operational Validation;
+data fw_all_response_OV;
+	set fw_all_response;
+	OV = abs(((yhat-&response.)/&response.));
+	Prediction_Grade = put(OV, Prediction_Grade.);
+	if Prediction_Grade = 'Missing' then delete;
+run; quit;
+
+proc freq data = fw_all_response_OV;
 	tables Prediction_Grade;
 	title "Operational Validation of &response.";
 run; quit;
