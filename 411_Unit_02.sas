@@ -45,7 +45,7 @@ run; quit;
 ***********************************;
 
 *	Create training data set;
-data &data_og.;
+data &data_og._70;
 	set &data_og.;
 	where train = 1;
 run; quit;
@@ -93,7 +93,7 @@ run; quit;
 
 *	Declare data set to be used;
 *	Either full, 70-split, or 30-split;
-%let data_og = INS_70;
+%let data_og = INS;
 
 *	Declare subsequent macro variables;
 %let data_imp = &data_og._imp;
@@ -721,10 +721,6 @@ data &data_cat.;
 		N_CLM_FREQ_Yes	=	(N_CLM_FREQ > 0);
 		N_CLM_FREQ_Hi	=	(N_CLM_FREQ >= 2);
 		N_CLM_FREQ_Lo	=	(N_CLM_FREQ_Hi = 0);
-
-		N_DEGREE		=	(C_EDUCATION_Bachelors = 1 or
-							C_EDUCATION_Masters = 1 or
-							C_EDUCATION_PhD = 1);
 
 		N_HOMEKIDS_No	=	(N_HOMEKIDS = 0);
 		N_HOMEKIDS_Yes	=	(N_HOMEKIDS > 0);
@@ -2050,13 +2046,10 @@ data ins_m11_30 (keep = INDEX TARGET_FLAG P_TARGET_FLAG);
 	set ins_m11_30;
 run; quit;
 
-**********************************************************************;
-*	Wilck Replica @ 100;
-**********************************************************************;
 
-*	Replicate model in sync code based on currently created variables
-	That is, DO NOT create new variables to match model;
-*	OK, only new variable created = DEGREE and not used in any other model;
+**********************************************************************;
+*	Model 12.1 @ 100;
+**********************************************************************;
 
 ods graphics on;
 proc logistic data = INS_Model
@@ -2068,6 +2061,10 @@ model TARGET_FLAG(ref = "0") =
 
 	C_CAR_USE_Private
 	
+	C_EDUCATION_Bachelors
+	C_EDUCATION_Masters
+	C_EDUCATION_PhD
+	
 	C_JOB_z_BC
 	C_JOB_Clerical
 	C_JOB_Doctor
@@ -2085,7 +2082,6 @@ model TARGET_FLAG(ref = "0") =
 	N_HOMEKIDS_No
 	
 	N_AGE
-	N_DEGREE
 	N_TRAVTIME_T99
 	
 	N_HOME_VAL_ln
@@ -2096,28 +2092,24 @@ model TARGET_FLAG(ref = "0") =
 	MF_N_INCOME
 
 	/ rsquare lackfit roceps = 0.1;
-	output out = ins_wilck_100 predicted = P_TARGET_FLAG;
+	output out = ins_m12_100 predicted = P_TARGET_FLAG;
 run; quit;
 ods graphics off;
 
 *	KS Stats;
-proc npar1way data = ins_wilck_100 edf;
+proc npar1way data = ins_m12_100 edf;
 	class &response.;
 	var P_TARGET_FLAG;
 run; quit;
 
 *	Scoring;
-data ins_wilck_100 (keep = INDEX TARGET_FLAG P_TARGET_FLAG);
-	set ins_wilck_100;
+data ins_m12_100 (keep = INDEX TARGET_FLAG P_TARGET_FLAG);
+	set ins_m12_100;
 run; quit;
 
 **********************************************************************;
-*	Wilck Replica @ 70;
+*	Model 12.2 @ 70;
 **********************************************************************;
-
-*	Replicate model in sync code based on currently created variables
-	That is, DO NOT create new variables to match model;
-*	OK, only new variable created = DEGREE and not used in any other model;
 
 ods graphics on;
 proc logistic data = INS_70_Model
@@ -2129,6 +2121,10 @@ model TARGET_FLAG(ref = "0") =
 
 	C_CAR_USE_Private
 	
+	C_EDUCATION_Bachelors
+	C_EDUCATION_Masters
+	C_EDUCATION_PhD
+	
 	C_JOB_z_BC
 	C_JOB_Clerical
 	C_JOB_Doctor
@@ -2146,7 +2142,6 @@ model TARGET_FLAG(ref = "0") =
 	N_HOMEKIDS_No
 	
 	N_AGE
-	N_DEGREE
 	N_TRAVTIME_T99
 	
 	N_HOME_VAL_ln
@@ -2157,28 +2152,24 @@ model TARGET_FLAG(ref = "0") =
 	MF_N_INCOME
 
 	/ rsquare lackfit roceps = 0.1;
-	output out = ins_wilck_70 predicted = P_TARGET_FLAG;
+	output out = ins_m12_70 predicted = P_TARGET_FLAG;
 run; quit;
 ods graphics off;
 
 *	KS Stats;
-proc npar1way data = ins_wilck_70 edf;
+proc npar1way data = ins_m12_70 edf;
 	class &response.;
 	var P_TARGET_FLAG;
 run; quit;
 
 *	Scoring;
-data ins_wilck_70 (keep = INDEX TARGET_FLAG P_TARGET_FLAG);
-	set ins_wilck_70;
+data ins_m12_70 (keep = INDEX TARGET_FLAG P_TARGET_FLAG);
+	set ins_m12_70;
 run; quit;
 
 **********************************************************************;
-*	Wilck Replica @ 30;
+*	Model 12.3 @ 30;
 **********************************************************************;
-
-*	Replicate model in sync code based on currently created variables
-	That is, DO NOT create new variables to match model;
-*	OK, only new variable created = DEGREE and not used in any other model;
 
 ods graphics on;
 proc logistic data = INS_30_Model
@@ -2190,6 +2181,10 @@ model TARGET_FLAG(ref = "0") =
 
 	C_CAR_USE_Private
 	
+	C_EDUCATION_Bachelors
+	C_EDUCATION_Masters
+	C_EDUCATION_PhD
+	
 	C_JOB_z_BC
 	C_JOB_Clerical
 	C_JOB_Doctor
@@ -2207,7 +2202,6 @@ model TARGET_FLAG(ref = "0") =
 	N_HOMEKIDS_No
 	
 	N_AGE
-	N_DEGREE
 	N_TRAVTIME_T99
 	
 	N_HOME_VAL_ln
@@ -2218,21 +2212,212 @@ model TARGET_FLAG(ref = "0") =
 	MF_N_INCOME
 
 	/ rsquare lackfit roceps = 0.1;
-	output out = ins_wilck_30 predicted = P_TARGET_FLAG;
+	output out = ins_m12_30_test predicted = P_TARGET_FLAG;
 run; quit;
 ods graphics off;
 
 *	KS Stats;
-proc npar1way data = ins_wilck_30 edf;
+proc npar1way data = ins_m12_30_test edf;
 	class &response.;
 	var P_TARGET_FLAG;
 run; quit;
 
 *	Scoring;
-data ins_wilck_30 (keep = INDEX TARGET_FLAG P_TARGET_FLAG);
-	set ins_wilck_30;
+data ins_m12_30_test (keep = INDEX TARGET_FLAG P_TARGET_FLAG);
+	set ins_m12_30_test;
 run; quit;
 
+***********************************;
+*	Model 13.1 @ 100;
+***********************************;
+
+*	Model;
+proc logistic data = INS_Model
+plot(label) = (roc(ID=prob) effect influence(unpack)) plots(maxpoints = none);
+model TARGET_FLAG(ref = "0") = 
+
+	C_CAR_TYPE_Minivan
+	C_CAR_TYPE_Sports_Car
+	
+	C_CAR_USE_Private
+
+	C_EDUCATION_Bachelors
+	C_EDUCATION_Masters
+	C_EDUCATION_PhD
+
+	C_JOB_z_BC
+	C_JOB_Clerical
+	C_JOB_Doctor
+	C_JOB_Manager
+	
+	C_MSTATUS_Yes
+	C_REVOKED_Yes
+	C_URBANICITY_Urban
+	
+	N_CLM_FREQ_No
+	N_INCOME_No
+	N_INCOME_Hi
+	N_OLDCLAIM_Hi
+	N_AGE_RISK_Yes
+	N_HOMEKIDS_No
+	
+	N_AGE
+	N_TRAVTIME_T99
+
+	N_HOME_VAL_ln
+	N_KIDSDRIV_ln
+	N_MVR_PTS_ln
+	N_TIF_ln
+	
+	MF_JOB
+	MF_N_AGE
+	MF_N_CAR_AGE
+	MF_N_HOME_VAL
+	MF_N_INCOME
+	MF_N_YOJ
+	
+	/ rsquare lackfit roceps = 0.1;
+	output out = ins_m13_100 predicted = P_TARGET_FLAG;
+run; quit;
+
+*	KS Stats;
+proc npar1way data = ins_m13_100 edf;
+	class &response.;
+	var P_TARGET_FLAG;
+run; quit;
+
+*	Scoring;
+data ins_m13_100 (keep = INDEX TARGET_FLAG P_TARGET_FLAG);
+	set ins_m13_100;
+run; quit;
+
+***********************************;
+*	Model 13.2 @ 70;
+***********************************;
+
+*	Model;
+proc logistic data = INS_70_Model
+plot(label) = (roc(ID=prob) effect influence(unpack)) plots(maxpoints = none);
+model TARGET_FLAG(ref = "0") = 
+
+	C_CAR_TYPE_Minivan
+	C_CAR_TYPE_Sports_Car
+	
+	C_CAR_USE_Private
+
+	C_EDUCATION_Bachelors
+	C_EDUCATION_Masters
+	C_EDUCATION_PhD
+
+	C_JOB_z_BC
+	C_JOB_Clerical
+	C_JOB_Doctor
+	C_JOB_Manager
+	
+	C_MSTATUS_Yes
+	C_REVOKED_Yes
+	C_URBANICITY_Urban
+	
+	N_CLM_FREQ_No
+	N_INCOME_No
+	N_INCOME_Hi
+	N_OLDCLAIM_Hi
+	N_AGE_RISK_Yes
+	N_HOMEKIDS_No
+	
+	N_AGE
+	N_TRAVTIME_T99
+
+	N_HOME_VAL_ln
+	N_KIDSDRIV_ln
+	N_MVR_PTS_ln
+	N_TIF_ln
+	
+	MF_JOB
+	MF_N_AGE
+	MF_N_CAR_AGE
+	MF_N_HOME_VAL
+	MF_N_INCOME
+	MF_N_YOJ
+	
+	/ rsquare lackfit roceps = 0.1;
+	output out = ins_m13_70 predicted = P_TARGET_FLAG;
+run; quit;
+
+*	KS Stats;
+proc npar1way data = ins_m13_70 edf;
+	class &response.;
+	var P_TARGET_FLAG;
+run; quit;
+
+*	Scoring;
+data ins_m13_70 (keep = INDEX TARGET_FLAG P_TARGET_FLAG);
+	set ins_m13_70;
+run; quit;
+
+***********************************;
+*	Model 13.3 @ 30;
+***********************************;
+
+*	Model;
+proc logistic data = INS_30_Model
+plot(label) = (roc(ID=prob) effect influence(unpack)) plots(maxpoints = none);
+model TARGET_FLAG(ref = "0") = 
+
+	C_CAR_TYPE_Minivan
+	C_CAR_TYPE_Sports_Car
+	
+	C_CAR_USE_Private
+
+	C_EDUCATION_Bachelors
+	C_EDUCATION_Masters
+	C_EDUCATION_PhD
+
+	C_JOB_z_BC
+	C_JOB_Clerical
+	C_JOB_Doctor
+	C_JOB_Manager
+	
+	C_MSTATUS_Yes
+	C_REVOKED_Yes
+	C_URBANICITY_Urban
+	
+	N_CLM_FREQ_No
+	N_INCOME_No
+	N_INCOME_Hi
+	N_OLDCLAIM_Hi
+	N_AGE_RISK_Yes
+	N_HOMEKIDS_No
+	
+	N_AGE
+	N_TRAVTIME_T99
+
+	N_HOME_VAL_ln
+	N_KIDSDRIV_ln
+	N_MVR_PTS_ln
+	N_TIF_ln
+	
+	MF_JOB
+	MF_N_AGE
+	MF_N_CAR_AGE
+	MF_N_HOME_VAL
+	MF_N_INCOME
+	MF_N_YOJ
+	
+	/ rsquare lackfit roceps = 0.1;
+	output out = ins_m13_30 predicted = P_TARGET_FLAG;
+run; quit;
+
+*	KS Stats;
+proc npar1way data = ins_m13_30 edf;
+	class &response.;
+	var P_TARGET_FLAG;
+run; quit;
+
+*	Scoring;
+data ins_m13_30 (keep = INDEX TARGET_FLAG P_TARGET_FLAG);
+	set ins_m13_30;
+run; quit;
 
 **********************************************************************;
 **********************************************************************;
