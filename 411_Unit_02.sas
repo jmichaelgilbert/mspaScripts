@@ -45,8 +45,8 @@ run; quit;
 ***********************************;
 
 *	Create training data set;
-data &data_og.;
-	set &data_og.;
+data &data_og._70;
+	set &data_og._70;
 	where train = 1;
 run; quit;
 
