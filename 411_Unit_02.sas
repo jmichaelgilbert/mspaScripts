@@ -93,7 +93,7 @@ run; quit;
 
 *	Declare data set to be used;
 *	Either full, 70-split, or 30-split;
-%let data_og = INS_70;
+%let data_og = INS;
 
 *	Declare subsequent macro variables;
 %let data_imp = &data_og._imp;
