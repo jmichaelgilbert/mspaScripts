@@ -311,7 +311,7 @@ run; quit;
 %mend;
 
 **********************************************************************;
-*	Macro for natural log and squared transform;
+*	Macro for natural log, square, and square root transforms;
 **********************************************************************;
 %macro transform(varname);
 	data &data_trans.;
@@ -638,7 +638,7 @@ data &data_trans.;
 	set &data_trim.;
 run; quit;
 
-*	Transform variables to log;
+*	Transform variables to natural log, square, and square root;
 data _null_;
 	do i = 1 to num;
 		set &contents_trim. nobs = num;
