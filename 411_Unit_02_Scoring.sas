@@ -682,10 +682,10 @@ run; quit;
 *	Model 7;
 **********************************************************************;
 
-data &data_model._M7 (keep = index P_TARGET_FLAG);
+data &data_model._M7 (keep = index P_TARGET_FLAG P_TARGET_AMT);
 	set &data_model.;
 
-	YHAT 	=
+	LOG_ODDS		=
 	-3.9144									+
 	(C_CAR_TYPE_Minivan		*	-0.4557)	+
 	(C_CAR_TYPE_Pickup		*	0.1411)		+
@@ -721,10 +721,26 @@ data &data_model._M7 (keep = index P_TARGET_FLAG);
 	(MF_N_YOJ				*	0.0628)
 	;
 
-YHAT_e	= 	exp(YHAT);
-PROB 	= 	((YHAT_e) / (1 + YHAT_e));
+	P_TARGET_AMT	=
+	3258.00804								+
+	(C_EDUCATION_z_HS		*	-584.81766)	+
+	(C_CAR_USE_Commercial	*	187.48512)	+
+	(C_CAR_TYPE_Panel_Truck	*	-175.83876)	+
+	(C_JOB_Manager			*	-1022.07127)+
+	(C_JOB_Professional		*	396.82587)	+
+	(C_MSTATUS_Yes			*	-932.10996)	+
+	(C_REVOKED_Yes			*	-1082.74818)+
+	(C_SEX_z_F				*	-527.56370)	+
+	(N_CAR_AGE_T90_sq		*	-5.00398)	+
+	(N_HOME_VAL_T75_rt		*	1.73686)	+
+	(N_MVR_PTS_T90_sq		*	30.71701)	+
+	(N_BLUEBOOK_T99_rt		*	27.61087)	+
+	(N_OLDCLAIM_T99_sq		*	0.0000007383869)	+
+	(MF_N_HOME_VAL			*	243.11383)
+	;
 
-P_TARGET_FLAG = PROB;
+	ODDS			= 	exp(LOG_ODDS);
+	P_TARGET_FLAG 	= 	((ODDS) / (1 + ODDS));
 
 run; quit;
 
@@ -732,19 +748,19 @@ run; quit;
 *	Model 8;
 **********************************************************************;
 
-data &data_model._M8 (keep = index P_TARGET_FLAG);
+data &data_model._M8 (keep = index P_TARGET_FLAG P_TARGET_AMT);
 	set &data_model.;
 
-	YHAT 	=
+	LOG_ODDS	 	=
 	-3.9023 								+ 
 	(C_CAR_TYPE_Minivan		*	-0.4572)	+
 	(C_CAR_TYPE_Pickup		*	0.1405)		+
-	(C_CAR_TYPE_Sports_Ca	*	0.5552)		+
+	(C_CAR_TYPE_Sports_Car	*	0.5552)		+
 	(C_CAR_TYPE_z_SUV		*	0.3042)		+
 	(C_CAR_USE_Commercial	*	0.6981)		+
 	(C_EDUCATION_z_HS		*	0.2341)		+
 	(C_EDUCATION_LT_HS		*	0.177)		+
-	(C_EDUCATION_Bachelor	*	-0.103)		+
+	(C_EDUCATION_Bachelors	*	-0.103)		+
 	(C_JOB_z_BC				*	0.4477)		+
 	(C_JOB_Clerical			*	0.4479)		+
 	(C_JOB_Home_Maker		*	0.1568)		+
@@ -773,10 +789,26 @@ data &data_model._M8 (keep = index P_TARGET_FLAG);
 	(MF_N_YOJ				*	0.0663)
 	;
 
-YHAT_e	= 	exp(YHAT);
-PROB 	= 	((YHAT_e) / (1 + YHAT_e));
-
-P_TARGET_FLAG = PROB;
+	P_TARGET_AMT	=
+	3258.00804								+
+	(C_EDUCATION_z_HS		*	-584.81766)	+
+	(C_CAR_USE_Commercial	*	187.48512)	+
+	(C_CAR_TYPE_Panel_Truck	*	-175.83876)	+
+	(C_JOB_Manager			*	-1022.07127)+
+	(C_JOB_Professional		*	396.82587)	+
+	(C_MSTATUS_Yes			*	-932.10996)	+
+	(C_REVOKED_Yes			*	-1082.74818)+
+	(C_SEX_z_F				*	-527.56370)	+
+	(N_CAR_AGE_T90_sq		*	-5.00398)	+
+	(N_HOME_VAL_T75_rt		*	1.73686)	+
+	(N_MVR_PTS_T90_sq		*	30.71701)	+
+	(N_BLUEBOOK_T99_rt		*	27.61087)	+
+	(N_OLDCLAIM_T99_sq		*	0.0000007383869)	+
+	(MF_N_HOME_VAL			*	243.11383)
+	;
+	
+	ODDS			= 	exp(LOG_ODDS);
+	P_TARGET_FLAG 	= 	((ODDS) / (1 + ODDS));
 
 run; quit;
 
@@ -784,13 +816,13 @@ run; quit;
 *	Model 9;
 **********************************************************************;
 
-data &data_model._M9 (keep = index P_TARGET_FLAG);
+data &data_model._M9 (keep = index P_TARGET_FLAG P_TARGET_AMT);
 	set &data_model.;
 
-	YHAT 	=
+	LOG_ODDS	 	=
 	-5.7362									+	
 	(C_CAR_TYPE_Pickup		*	0.4325)		+
-	(C_CAR_TYPE_Sports_Ca	*	0.8345)		+
+	(C_CAR_TYPE_Sports_Car	*	0.8345)		+
 	(C_CAR_TYPE_z_SUV		*	0.6303)		+
 	(C_CAR_USE_Commercial	*	0.8456)		+
 	(C_EDUCATION_z_HS		*	0.4583)		+
@@ -823,10 +855,26 @@ data &data_model._M9 (keep = index P_TARGET_FLAG);
 	(MF_N_YOJ				*	0.0722)
 	;
 
-YHAT_e	= 	exp(YHAT);
-PROB 	= 	((YHAT_e) / (1 + YHAT_e));
-
-P_TARGET_FLAG = PROB;
+	P_TARGET_AMT	=
+	3258.00804								+
+	(C_EDUCATION_z_HS		*	-584.81766)	+
+	(C_CAR_USE_Commercial	*	187.48512)	+
+	(C_CAR_TYPE_Panel_Truck	*	-175.83876)	+
+	(C_JOB_Manager			*	-1022.07127)+
+	(C_JOB_Professional		*	396.82587)	+
+	(C_MSTATUS_Yes			*	-932.10996)	+
+	(C_REVOKED_Yes			*	-1082.74818)+
+	(C_SEX_z_F				*	-527.56370)	+
+	(N_CAR_AGE_T90_sq		*	-5.00398)	+
+	(N_HOME_VAL_T75_rt		*	1.73686)	+
+	(N_MVR_PTS_T90_sq		*	30.71701)	+
+	(N_BLUEBOOK_T99_rt		*	27.61087)	+
+	(N_OLDCLAIM_T99_sq		*	0.0000007383869)	+
+	(MF_N_HOME_VAL			*	243.11383)
+	;
+	
+	ODDS			= 	exp(LOG_ODDS);
+	P_TARGET_FLAG 	= 	((ODDS) / (1 + ODDS));
 
 run; quit;
 
@@ -834,14 +882,14 @@ run; quit;
 *	Model 10;
 **********************************************************************;
 
-data &data_model._M10 (keep = index P_TARGET_FLAG);
+data &data_model._M10 (keep = index P_TARGET_FLAG P_TARGET_AMT);
 	set &data_model.;
 
-	YHAT 	=
+	LOG_ODDS	 	=
 	-5.4118									+	
 	(C_CAR_TYPE_Minivan		*	-0.4217)	+
 	(C_CAR_TYPE_Pickup		*	0.2303)		+
-	(C_CAR_TYPE_Sports_Ca	*	0.579)		+
+	(C_CAR_TYPE_Sports_Car	*	0.579)		+
 	(C_CAR_TYPE_z_SUV		*	0.3759)		+
 	(C_CAR_USE_Commercial	*	0.6973)		+
 	(C_EDUCATION_z_HS		*	0.4984)		+
@@ -873,10 +921,26 @@ data &data_model._M10 (keep = index P_TARGET_FLAG);
 	(MF_N_YOJ				*	0.0662)
 	;
 
-YHAT_e	= 	exp(YHAT);
-PROB 	= 	((YHAT_e) / (1 + YHAT_e));
-
-P_TARGET_FLAG = PROB;
+	P_TARGET_AMT	=
+	3258.00804								+
+	(C_EDUCATION_z_HS		*	-584.81766)	+
+	(C_CAR_USE_Commercial	*	187.48512)	+
+	(C_CAR_TYPE_Panel_Truck	*	-175.83876)	+
+	(C_JOB_Manager			*	-1022.07127)+
+	(C_JOB_Professional		*	396.82587)	+
+	(C_MSTATUS_Yes			*	-932.10996)	+
+	(C_REVOKED_Yes			*	-1082.74818)+
+	(C_SEX_z_F				*	-527.56370)	+
+	(N_CAR_AGE_T90_sq		*	-5.00398)	+
+	(N_HOME_VAL_T75_rt		*	1.73686)	+
+	(N_MVR_PTS_T90_sq		*	30.71701)	+
+	(N_BLUEBOOK_T99_rt		*	27.61087)	+
+	(N_OLDCLAIM_T99_sq		*	0.0000007383869)	+
+	(MF_N_HOME_VAL			*	243.11383)
+	;
+	
+	ODDS			= 	exp(LOG_ODDS);
+	P_TARGET_FLAG 	= 	((ODDS) / (1 + ODDS));
 
 run; quit;
 
@@ -884,19 +948,19 @@ run; quit;
 *	Model 11;
 **********************************************************************;
 
-data &data_model._M11 (keep = index P_TARGET_FLAG);
+data &data_model._M11 (keep = index P_TARGET_FLAG P_TARGET_AMT);
 	set &data_model.;
 
-	YHAT 	=
+	LOG_ODDS	 	=
 	-5.4632									+	
 	(C_CAR_TYPE_Minivan		*	-0.4291)	+
 	(C_CAR_TYPE_Pickup		*	0.2197)		+
-	(C_CAR_TYPE_Sports_Ca	*	0.5459)		+
+	(C_CAR_TYPE_Sports_Car	*	0.5459)		+
 	(C_CAR_TYPE_z_SUV		*	0.3454)		+
 	(C_CAR_USE_Commercial	*	0.697)		+
 	(C_EDUCATION_z_HS		*	0.4534)		+
 	(C_EDUCATION_LT_HS		*	0.465)		+
-	(C_EDUCATION_Bachelor	*	-0.0109)	+
+	(C_EDUCATION_Bachelors	*	-0.0109)	+
 	(C_JOB_z_BC				*	0.5135)		+
 	(C_JOB_Clerical			*	0.6654)		+
 	(C_JOB_Home_Maker		*	0.3701)		+
@@ -925,10 +989,26 @@ data &data_model._M11 (keep = index P_TARGET_FLAG);
 	(MF_N_YOJ				*	0.0708)
 	;
 
-YHAT_e	= 	exp(YHAT);
-PROB 	= 	((YHAT_e) / (1 + YHAT_e));
-
-P_TARGET_FLAG = PROB;
+	P_TARGET_AMT	=
+	3258.00804								+
+	(C_EDUCATION_z_HS		*	-584.81766)	+
+	(C_CAR_USE_Commercial	*	187.48512)	+
+	(C_CAR_TYPE_Panel_Truck	*	-175.83876)	+
+	(C_JOB_Manager			*	-1022.07127)+
+	(C_JOB_Professional		*	396.82587)	+
+	(C_MSTATUS_Yes			*	-932.10996)	+
+	(C_REVOKED_Yes			*	-1082.74818)+
+	(C_SEX_z_F				*	-527.56370)	+
+	(N_CAR_AGE_T90_sq		*	-5.00398)	+
+	(N_HOME_VAL_T75_rt		*	1.73686)	+
+	(N_MVR_PTS_T90_sq		*	30.71701)	+
+	(N_BLUEBOOK_T99_rt		*	27.61087)	+
+	(N_OLDCLAIM_T99_sq		*	0.0000007383869)	+
+	(MF_N_HOME_VAL			*	243.11383)
+	;
+	
+	ODDS			= 	exp(LOG_ODDS);
+	P_TARGET_FLAG 	= 	((ODDS) / (1 + ODDS));
 
 run; quit;
 
@@ -936,15 +1016,15 @@ run; quit;
 *	Model 12;
 **********************************************************************;
 
-data &data_model._M12 (keep = index P_TARGET_FLAG);
+data &data_model._M12 (keep = index P_TARGET_FLAG P_TARGET_AMT);
 	set &data_model.;
 
-	YHAT 	=
+	LOG_ODDS	 	=
 	-1.6432									+	
 	(C_CAR_TYPE_Minivan		*	-0.6951)	+
-	(C_CAR_TYPE_Sports_Ca	*	0.2841)		+
+	(C_CAR_TYPE_Sports_Car	*	0.2841)		+
 	(C_CAR_USE_Private		*	-0.6154)	+
-	(C_EDUCATION_Bachelor	*	-0.4242)	+
+	(C_EDUCATION_Bachelors	*	-0.4242)	+
 	(C_EDUCATION_Masters	*	-0.37)		+
 	(C_EDUCATION_PhD		*	-0.4446)	+
 	(C_JOB_z_BC				*	0.262)		+
@@ -969,10 +1049,26 @@ data &data_model._M12 (keep = index P_TARGET_FLAG);
 	(MF_N_INCOME			*	0.0197)
 	;
 
-YHAT_e	= 	exp(YHAT);
-PROB 	= 	((YHAT_e) / (1 + YHAT_e));
-
-P_TARGET_FLAG = PROB;
+	P_TARGET_AMT	=
+	3258.00804								+
+	(C_EDUCATION_z_HS		*	-584.81766)	+
+	(C_CAR_USE_Commercial	*	187.48512)	+
+	(C_CAR_TYPE_Panel_Truck	*	-175.83876)	+
+	(C_JOB_Manager			*	-1022.07127)+
+	(C_JOB_Professional		*	396.82587)	+
+	(C_MSTATUS_Yes			*	-932.10996)	+
+	(C_REVOKED_Yes			*	-1082.74818)+
+	(C_SEX_z_F				*	-527.56370)	+
+	(N_CAR_AGE_T90_sq		*	-5.00398)	+
+	(N_HOME_VAL_T75_rt		*	1.73686)	+
+	(N_MVR_PTS_T90_sq		*	30.71701)	+
+	(N_BLUEBOOK_T99_rt		*	27.61087)	+
+	(N_OLDCLAIM_T99_sq		*	0.0000007383869)	+
+	(MF_N_HOME_VAL			*	243.11383)
+	;
+	
+	ODDS			= 	exp(LOG_ODDS);
+	P_TARGET_FLAG 	= 	((ODDS) / (1 + ODDS));
 
 run; quit;
 
@@ -980,15 +1076,15 @@ run; quit;
 *	Model 13;
 **********************************************************************;
 
-data &data_model._M13 (keep = index P_TARGET_FLAG);
+data &data_model._M13 (keep = index P_TARGET_FLAG P_TARGET_AMT);
 	set &data_model.;
 
-	YHAT 	=
+	LOG_ODDS	 	=
 	-1.6617									+	
 	(C_CAR_TYPE_Minivan		*	-0.6954)	+
-	(C_CAR_TYPE_Sports_Ca	*	0.281)		+
+	(C_CAR_TYPE_Sports_Car	*	0.281)		+
 	(C_CAR_USE_Private		*	-0.6295)	+
-	(C_EDUCATION_Bachelor	*	-0.4257)	+
+	(C_EDUCATION_Bachelors	*	-0.4257)	+
 	(C_EDUCATION_Masters	*	-0.3533)	+
 	(C_EDUCATION_PhD		*	-0.4339)	+
 	(C_JOB_z_BC				*	0.2624)		+
@@ -1018,10 +1114,26 @@ data &data_model._M13 (keep = index P_TARGET_FLAG);
 	(MF_N_YOJ				*	0.0618)
 	;
 
-YHAT_e	= 	exp(YHAT);
-PROB 	= 	((YHAT_e) / (1 + YHAT_e));
-
-P_TARGET_FLAG = PROB;
+	P_TARGET_AMT	=
+	3258.00804								+
+	(C_EDUCATION_z_HS		*	-584.81766)	+
+	(C_CAR_USE_Commercial	*	187.48512)	+
+	(C_CAR_TYPE_Panel_Truck	*	-175.83876)	+
+	(C_JOB_Manager			*	-1022.07127)+
+	(C_JOB_Professional		*	396.82587)	+
+	(C_MSTATUS_Yes			*	-932.10996)	+
+	(C_REVOKED_Yes			*	-1082.74818)+
+	(C_SEX_z_F				*	-527.56370)	+
+	(N_CAR_AGE_T90_sq		*	-5.00398)	+
+	(N_HOME_VAL_T75_rt		*	1.73686)	+
+	(N_MVR_PTS_T90_sq		*	30.71701)	+
+	(N_BLUEBOOK_T99_rt		*	27.61087)	+
+	(N_OLDCLAIM_T99_sq		*	0.0000007383869)	+
+	(MF_N_HOME_VAL			*	243.11383)
+	;
+	
+	ODDS			= 	exp(LOG_ODDS);
+	P_TARGET_FLAG 	= 	((ODDS) / (1 + ODDS));
 
 run; quit;
 
