@@ -89,7 +89,7 @@ run; quit;
 
 *	Declare data set to be used;
 *	Either full, 70-split, or 30-split;
-%let data_og = WINO;
+%let data_og = ABC_Sample;
 
 **********************************************************************;
 *	Globals;
