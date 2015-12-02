@@ -26,7 +26,7 @@ run; quit;
 **********************************************************************;
 
 
-*	Split the data create variables and flags as necessary;
+*	Split the data, create variables and flags as necessary;
 data &data_og.;
 	set &data_og.;
 	U = uniform(123);
@@ -86,6 +86,7 @@ run; quit;
 *	SAS Macros;
 **********************************************************************;
 **********************************************************************;
+
 
 *	Declare data set to be used;
 *	Either full, 70-split, or 30-split;
