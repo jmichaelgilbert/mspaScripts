@@ -1,6 +1,6 @@
 ###############################################################################
 # 413_Assignment_01.R
-# Last updated: 2016-01-10 by MJG
+# Last updated: 2016-01-12 by MJG
 ###############################################################################
 
 # Clear the workspace
@@ -32,8 +32,16 @@ tableBS <- function(ts) {
     bs
 }
 
+#======================================
+# Q1A
+#======================================
+
 # Get basic stats on each of the four tickers
 tableBS(returns[, c(3:6)])
+
+#======================================
+# Q1B
+#======================================
 
 # Transform simple returns to log returns, then repeat
 # A log return is the same as a continuously compounded return
@@ -42,8 +50,16 @@ returnsLog <- log(returns[,3:6]+1)
 # Get basic stats on log returns on each of the four tickers
 tableBS(returnsLog[, c(1:4)])
 
+#======================================
+# Q1C
+#======================================
+
 # Test the null hypothesis that the mean of the log returns of NFLX is 0
 t.test(returnsLog$nflx)
+
+#======================================
+# Q1D
+#======================================
 
 # Obtain the empirical density plot of the daily log returns of NFLX stock
 # and the S&P composite index
@@ -91,9 +107,17 @@ returnsLog <- log(returns[,3:6]+1)
 # GE
 ge <- returnsLog$ge
 
+#======================================
+# Q2A
+#======================================
+
 # Two ways of getting to 95% confidence interval:
 basicStats(ge)
 t.test(ge)
+
+#======================================
+# Q2B
+#======================================
 
 # Test H0: M3 = 0 vs. Ha: M3 != 0; where M3 = skewness of return
 # Here we are testing the symmetry of geM3 with respect to the mean
@@ -104,6 +128,10 @@ geM3 <- skewness(ge)/sqrt(6/length(ge)); geM3
 # pnorm computes the value to the left
 # 1-pnorm computes value to the right
 pp <- 2*(1-pnorm(abs(geM3))); pp
+
+#======================================
+# Q2C
+#======================================
 
 # Test H0: K = 3 vs. Ha: K != 3, where K = kurtosis of return
 # Here we are testing the tail behavior of geK with respect to the mean
@@ -128,17 +156,26 @@ summary(ts.visitors)
 head(ts.visitors)
 tail(ts.visitors)
 
+#======================================
+# Q3A
+#======================================
+
 # Plot the time-series
 plot(ts.visitors, ylab = "Visitors", xlab = "Year", 
      main = "Time-Series of Monthly Australian Short-Term Overseas Visitors
      May 1985 - April 2005",
      type = "o")
 
+#======================================
+# Q3B & Q3C
+#======================================
+
 # Forecast the next two years using Holt-Winters' multiplicative method
 
-#======================================
+#==================
 # Multiplicative
-#======================================
+#==================
+
 fit1 <- hw(ts.visitors, h = 24, seasonal = "multiplicative")
 
 # Plot the data
@@ -166,9 +203,10 @@ fitted(fit1)
 # Print forecast mean values to console
 fit1$mean
 
-#======================================
+#==================
 # Additive
-#======================================
+#==================
+
 fit2 <- hw(ts.visitors, h = 24, seasonal = "additive")
 
 # Plot the data
@@ -196,9 +234,10 @@ fitted(fit2)
 # Print forecast mean values to console
 fit2$mean
 
-#======================================
+#==================
 # Combined Plot
-#======================================
+#==================
+
 # Set to 1x2
 par(mfcol = c(1, 2))
 
@@ -215,8 +254,12 @@ plot(statesFit2, main = "Additive Seasonality", xlab = "Year")
 par(mfcol = c(1, 1))
 
 #======================================
-# Multiplicative: Exponential and Damped
+# Q3D
 #======================================
+
+#==================
+# Multiplicative: Exponential and Damped
+#==================
 
 # Multiplicative Exponential
 fit3 <- hw(ts.visitors, h = 24, seasonal = "multiplicative", exponential = T)
@@ -245,8 +288,10 @@ legend("topleft", lty = 1, pch = 1, col = 1:6,
        cex = 0.5)
 
 #======================================
-# Compare RMSE of the one-step forecasts from the various methods
+# Q3E
 #======================================
+
+# Compare RMSE of the one-step forecasts from the various methods
 accuracy(fit2)   # HW Additive
 accuracy(fit1)   # HW Multiplicative
 accuracy(fit3)   # HW Multiplicative Exponential
@@ -254,8 +299,10 @@ accuracy(fit4)   # HW Multiplicative Damped
 accuracy(fit5)   # HW Multiplicative Exponential Damped
 
 #======================================
-# Fitting additional models
+# Q3F & Q3G
 #======================================
+
+# Fitting additional models
 
 # Load data
 ts.visitors <- visitors
