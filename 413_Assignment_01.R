@@ -1,15 +1,15 @@
 ###############################################################################
 # 413_Assignment_01.R
-# Last updated: 2016-01-12 by MJG
+# Last updated: 2016-01-13 by MJG
 ###############################################################################
 
-# Clear the workspace
+# Clear workspace
 rm(list=ls())
 
-# Set working director
+# Set working directory
 setwd("C:/Users/mgilbert/Desktop/Personal/School/MSPA/413-DL/Data Sets")
 
-# Load necessary packages
+# Load packages
 library(fBasics)
 
 #==============================================================================
@@ -19,8 +19,8 @@ library(fBasics)
 # Read data
 returns <- read.table("d-nflx3dx0913.txt", header = T)
 
-# Explore dimension, head, tail
-dim(returns)
+# Explore summary stats, head, tail
+summary(returns)
 head(returns)
 tail(returns)
 
@@ -85,7 +85,7 @@ xfit <- seq(min(returnsLog$sprtrn), max(returnsLog$sprtrn), length = 100)
 yfit <- dnorm(xfit, mean = mean(returnsLog$sprtrn), sd = sd(returnsLog$sprtrn))
 lines(xfit, yfit, col = "blue", lwd = 2)
 
-# Reset to 1x1
+# Set to 1x1
 par(mfcol = c(1, 1))
 
 #==============================================================================
@@ -95,8 +95,8 @@ par(mfcol = c(1, 1))
 # Read data
 returns <- read.table("m-ge3dx8113.txt", header = T)
 
-# Explore dimension, head, tail
-dim(returns)
+# Explore summary stats, head, tail
+summary(returns)
 head(returns)
 tail(returns)
 
@@ -121,13 +121,13 @@ t.test(ge)
 
 # Test H0: M3 = 0 vs. Ha: M3 != 0; where M3 = skewness of return
 # Here we are testing the symmetry of geM3 with respect to the mean
-# This is the third moment
+# This is the third moment (M3)
 geM3 <- skewness(ge)/sqrt(6/length(ge)); geM3
 
 # Compute p-value for skewness
 # pnorm computes the value to the left
 # 1-pnorm computes value to the right
-pp <- 2*(1-pnorm(abs(geM3))); pp
+pv <- 2*(1-pnorm(abs(geM3))); pv
 
 #======================================
 # Q2C
@@ -135,11 +135,11 @@ pp <- 2*(1-pnorm(abs(geM3))); pp
 
 # Test H0: K = 3 vs. Ha: K != 3, where K = kurtosis of return
 # Here we are testing the tail behavior of geK with respect to the mean
-# This is the fourth moment
-geK <- kurtosis(ge, method = "excess")/sqrt(24/length(ge)); geK
+# This is the fourth moment (M4)
+geM4 <- kurtosis(ge, method = "excess")/sqrt(24/length(ge)); geM4
 
 # Compute p-value for kurtosis
-pp <- 2*(1-pnorm(abs(geK))); pp
+pv <- 2*(1-pnorm(abs(geM4))); pv
 
 #==============================================================================
 # Problem 3
@@ -199,6 +199,9 @@ fit1$model$state[,1:3]
 
 # Print historic fitted values to console
 fitted(fit1)
+
+# Print forecast values to console (lo 80, hi 80, lo 95, hi 95)
+fit1
 
 # Print forecast mean values to console
 fit1$mean
@@ -272,6 +275,7 @@ fit5 <- hw(ts.visitors, h = 24, seasonal = "multiplicative",
            exponential = T, damped = T)
 
 # Plot the data
+# Legend resized using 'cex = 0.5' option
 plot(fit1, ylab = "Visitors", xlab = "Year", 
      main = "Time-Series of Monthly Australian Short-Term Overseas Visitors
      May 1985 - April 2005",
@@ -309,27 +313,42 @@ ts.visitors <- visitors
 
 # Multiplicative Holt Winters' method
 Q3F1 <- hw(ts.visitors, h = 24, seasonal = "multiplicative")
+plot(Q3F1)                              # Forecast plotted
+hist(residuals(Q3F1), nclass = 20)      # Residuals plotted (histogram)
+plot(residuals(Q3F1))                   # Residuals plotted (line chart)
 accuracy(Q3F1)
 Q3F1$model
 
 # ETS model
 Q3F2 <- forecast(ets(ts.visitors), h = 24, opt.crit = "mse")
+plot(Q3F2)                              # Forecast plotted
+hist(residuals(Q3F2), nclass = 20)      # Residuals plotted (histogram)
+plot(residuals(Q3F2))                   # Residuals plotted (line chart)
 accuracy(Q3F2)
 Q3F2$model
 
 # Additive ETS model applied to a Box-Cox transformed series
 Q3F3 <- forecast(ets(ts.visitors, lambda = T, model = "AAA"), h = 24)
+plot(Q3F3)                              # Forecast plotted
+hist(residuals(Q3F3), nclass = 20)      # Residuals plotted (histogram)
+plot(residuals(Q3F3))                   # Residuals plotted (line chart)
 accuracy(Q3F3)
 Q3F3$model
 
 # Seasonal naive method applied to a Box-Cox transformed series
-Q3F4 <- forecast(ets(ts.visitors, lambda = T), h = 24)
+Q3F4 <- forecast(snaive(ts.visitors, lambda = T), h = 24)
+plot(Q3F4)                              # Forecast plotted
+hist(residuals(Q3F4), nclass = 20)      # Residuals plotted (histogram)
+plot(residuals(Q3F4))                   # Residuals plotted (line chart)
 accuracy(Q3F4)
 Q3F4$model
 
 # STL decomposition applied to a Box-Cox transformed data, followed by an
 # ETS model applied to the seasonally adjusted (transformed) data
 Q3F5 <- forecast(stlm(ts.visitors, method = "ets", lambda = T), h = 24)
+plot(Q3F5)                              # Forecast plotted
+hist(residuals(Q3F5), nclass = 20)      # Residuals plotted (histogram)
+plot(residuals(Q3F5))                   # Residuals plotted (line chart)
 accuracy(Q3F5)
 Q3F5$model
 
