@@ -11,6 +11,7 @@ setwd("C:/Users/mgilbert/Desktop/Personal/School/MSPA/413-DL/Data Sets")
 
 # Load packages
 library(fBasics)
+library(fpp)
 
 #==============================================================================
 # Problem 1
@@ -144,9 +145,6 @@ pv <- 2*(1-pnorm(abs(geM4))); pv
 #==============================================================================
 # Problem 3
 #==============================================================================
-
-# Load necessary packages
-library(fpp)
 
 # Load data
 ts.visitors <- visitors
