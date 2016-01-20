@@ -135,7 +135,7 @@ pv <- 2*(1-pnorm(abs(geM3))); pv
 #======================================
 
 # Test H0: K = 3 vs. Ha: K != 3, where K = kurtosis of return
-# Here we are testing the tail behavior of geK with respect to the mean
+# Here we are testing the tail behavior of geM4 with respect to the mean
 # This is the fourth moment (M4)
 geM4 <- kurtosis(ge, method = "excess")/sqrt(24/length(ge)); geM4
 
