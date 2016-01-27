@@ -1,6 +1,6 @@
 ###############################################################################
-# 413_Assignment_02.R
-# Last updated: 2016-01-16 by MJG
+# 413_Assignment_03.R
+# Last updated: 2016-01-27 by MJG
 ###############################################################################
 
 # Clear workspace
@@ -159,12 +159,16 @@ cs.diff.m2$residuals == cs.diff.m3$residuals
 length(cs.diff.m2$residuals)
 length(cs.diff.m3$residuals)
 
+# View the model and write it out in HW
+cs.diff.m2
+
 #======================================
 # Q2C
 #======================================
 
 # Does the model imply the existence of business cycles in consumer sentiment?
 # Need to view the polynomial root (pages 56-58 of Intro TS)
+# If results contain complex roots, suggest the existence of business cycles
 
 # Set up the polynomial
 cs.diff.m2.poly <- c(1, -cs.diff.m2$coef)
@@ -193,16 +197,15 @@ cs.diff.m2.fc$se
 
 # Create confidence intervals @ 95%
 
-# Lower confidence interval
+# Lower confidence level (or interval)
 cs.diff.m2.fc.lcl <- cs.diff.m2.fc$pred + 
     (qnorm(0.025, lower.tail = T) * cs.diff.m2.fc$se)
 cs.diff.m2.fc.lcl
 
-# Upper confidence interval
+# Upper confidence level (or interval)
 cs.diff.m2.fc.ucl <- cs.diff.m2.fc$pred + 
     (qnorm(0.025, lower.tail = F) * cs.diff.m2.fc$se)
 cs.diff.m2.fc.ucl
-
 
 # Plot the series
 # Note: this works but looks terrible
@@ -228,30 +231,21 @@ lines(ts(cs.diff.m2.fc.ucl, start = c(2013,9), frequency = 12), col = 4)
 # View the parameter estimates (coefficients)
 cs.diff.m2$coef
 
-# Two ways of doing this, will produce similar results:
-
-#------------------
-# Method 1
-#------------------
 # Test the t-ratio of each, remove if abs(x) < 1.2
+
+# Two ways of getting the standard error (se)
 cs.diff.m2.se <- sqrt(diag(vcov(cs.diff.m2))); cs.diff.m2.se
-cs.diff.m2.tratio <- abs(cs.diff.m2$coef / cs.diff.m2.se); cs.diff.m2.tratio
-#------------------
+cs.diff.m2.se <- sqrt(diag(cs.diff.m2$var.coef)); cs.diff.m2.se
 
-#------------------
-# Method 2
-#------------------
-# Test the t-ratio of each, remove if abs(x) < 1.2
-abs((cs.diff.m2$coef[1]) * sqrt(length(cs.diff.m2$residuals)))   # Remove
-abs((cs.diff.m2$coef[2]) * sqrt(length(cs.diff.m2$residuals)))   # Keep
-abs((cs.diff.m2$coef[3]) * sqrt(length(cs.diff.m2$residuals)))   # Keep
-abs((cs.diff.m2$coef[4]) * sqrt(length(cs.diff.m2$residuals)))   # Remove
-abs((cs.diff.m2$coef[5]) * sqrt(length(cs.diff.m2$residuals)))   # Keep
-#------------------
+# Now calculate the t-ratio
+cs.diff.m2.tratio <- abs(cs.diff.m2$coef / cs.diff.m2.se); cs.diff.m2.tratio
 
 # Set the new model
 cs.diff.m4 <- arima(cs.diff, order = c(5, 0, 0), include.mean = F,
                     fixed = c(0, NA, NA, 0, NA))
+
+# View the model and write it out in HW
+cs.diff.m4
 
 #======================================
 # Q3B & Q3C
@@ -311,6 +305,7 @@ plot(forecast(cs.diff.m4))
 
 # Does the model imply the existence of business cycles in consumer sentiment?
 # Need to view the polynomial root (pages 56-58 of Intro TS)
+# If results contain complex roots, suggest the existence of business cycles
 
 # Set up the polynomial
 cs.diff.m4.poly <- c(1, -cs.diff.m4$coef)
