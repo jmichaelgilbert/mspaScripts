@@ -7,7 +7,7 @@
 rm(list=ls())
 
 # Set working directory
-setwd("D:/Personal/School/MSPA/413-DL/Data Sets")
+setwd("C:/Users/Michael/Dropbox/MSPA/413-DL/Data Sets")
 
 # Load packages
 library(fpp)
@@ -15,7 +15,7 @@ library(fBasics)
 library(fUnitRoots)
 
 # Source backtest function, currently stored in:
-# D:/Personal/School/MSPA/413-DL/Code/Functions/413_Function_backtest.R
+# C:/Users/Michael/Dropbox/MSPA/413-DL/Code/Functions
 
 #==============================================================================
 # Problem 1
@@ -321,7 +321,7 @@ Mod(cs.diff.m4.root)
 #======================================
 
 # Use backtest to compare the two models (M2 & M4) with forecast origin at
-# t = 380. Which model is preferred?
+# t = 380; which model is preferred?
 
 # Backtest - M2
 backtest(cs.diff.m2, cs.diff, 380, 1, inc.mean = F)
