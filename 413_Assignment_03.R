@@ -267,7 +267,8 @@ cs.diff.m4
 # Model two 
 #------------------
 # Summary Stats
-accuracy(cs.diff.m2); summary(cs.diff.m2); tsdiag(cs.diff.m2)
+summary(cs.diff.m2)
+tsdiag(cs.diff.m2)
 
 # Pormanteau test or Ljung-Box test
 # Set fitdf = p + q from arima(order = (p, d, q))
@@ -285,7 +286,8 @@ plot(forecast(cs.diff.m2))
 # Model four
 #------------------
 # Summary Stats
-accuracy(cs.diff.m4); summary(cs.diff.m4); tsdiag(cs.diff.m4)
+summary(cs.diff.m4)
+tsdiag(cs.diff.m4)
 
 # Pormanteau test
 # Set fitdf = p + q from arima(order = (p, d, q))
