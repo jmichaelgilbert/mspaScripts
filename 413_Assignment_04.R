@@ -365,7 +365,7 @@ oil.log.diff.m2.tratio
 # Part 3:
 #------------------
 # Rebuild model with coefficients removed
-oil.log.diff.m3 <- arima(oil.log.diff, order = c(11,0,0), include.mean = F,
+oil.log.diff.m3 <- arima(oil.log.diff, order = c(11, 0, 0), include.mean = F,
                          fixed = c(NA, NA, NA, 0, 0, 0, 0, NA, 0, 0, NA))
 oil.log.diff.m3
 
@@ -376,7 +376,7 @@ tsdiag(oil.log.diff.m3)
 # Pormanteau test or Ljung-Box test & plot
 Box.test(residuals(oil.log.diff.m3), lag = 52, fitdf = 11, type = "Ljung")
 Box.test(residuals(oil.log.diff.m3), lag = 104, fitdf = 11, type = "Ljung")
-plot(sapply(0:100, function(i) Box.test(residuals(oil.log.diff.m3), lag = i,
+plot(sapply(11:100, function(i) Box.test(residuals(oil.log.diff.m3), lag = i,
                                          fitdf = 11)$p.value), type = "l")
 
 # ACF & PACF of residuals - first lag removed
