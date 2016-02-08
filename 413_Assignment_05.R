@@ -219,7 +219,7 @@ plot(forecast(ps.m1))
 # Removing coefficients: t-ratio
 # Test the t-ratio of each, remove if abs(x) < 1.96
 
-# Two ways of getting the standard error (se)
+# Compute the standard error (se)
 ps.m1.se <- sqrt(diag(vcov(ps.m1))); ps.m1.se
 
 # Now calculate the t-ratio
@@ -271,7 +271,7 @@ par(mfcol = c(1, 1))
 # Removing coefficients: t-ratio
 # Test the t-ratio of each, remove if abs(x) < 1.96
 
-# Two ways of getting the standard error (se)
+# Compute the standard error (se)
 ps.m2.se <- sqrt(diag(vcov(ps.m2))); ps.m2.se
 
 # Now calculate the t-ratio
@@ -309,7 +309,7 @@ par(mfcol = c(1, 1))
 # Removing coefficients: t-ratio
 # Test the t-ratio of each, remove if abs(x) < 1.96
 
-# Two ways of getting the standard error (se)
+# Compute the standard error (se)
 ps.m3.se <- sqrt(diag(vcov(ps.m2))); ps.m2.se
 
 # Now calculate the t-ratio
@@ -391,7 +391,7 @@ par(mfcol = c(1, 1))
 # Removing coefficients: t-ratio
 # Test the t-ratio of each, remove if abs(x) < 1.96
 
-# Two ways of getting the standard error (se)
+# Compute the standard error (se)
 ms.log.diff.m1.se <- sqrt(diag(vcov(ms.log.diff.m1))); ms.log.diff.m1.se
 
 # Now calculate the t-ratio
@@ -434,7 +434,7 @@ par(mfcol = c(1, 1))
 # Removing coefficients: t-ratio
 # Test the t-ratio of each, remove if abs(x) < 1.96
 
-# Two ways of getting the standard error (se)
+# Compute the standard error (se)
 ms.log.m1.se <- sqrt(diag(vcov(ms.log.m1))); ms.log.m1.se
 
 # Now calculate the t-ratio
@@ -563,7 +563,7 @@ par(mfcol = c(1, 1))
 # Removing coefficients: t-ratio
 # Test the t-ratio of each, remove if abs(x) < 1.96
 
-# Two ways of getting the standard error (se)
+# Compute the standard error (se)
 bond.m4.se <- sqrt(diag(vcov(bond.m4))); bond.m4.se
 
 # Now calculate the t-ratio
@@ -602,7 +602,7 @@ par(mfcol = c(1, 1))
 # Removing coefficients: t-ratio
 # Test the t-ratio of each, remove if abs(x) < 1.96
 
-# Two ways of getting the standard error (se)
+# Compute the standard error (se)
 bond.m5.se <- sqrt(diag(vcov(bond.m5))); bond.m5.se
 
 # Now calculate the t-ratio
@@ -620,37 +620,101 @@ bond.m5.tratio
 # Problem 5
 #==============================================================================
 
-
-
 #======================================
 # Q5A
 #======================================
 
+# Fit an AR(6) model to y3.diff, use y1.diff as an explanatory variable
+# Write down the fitted model and include the intercept
+bond.m6 <- arima(y3, order = c(6, 0, 0), xreg = y1)
+bond.m6
 
+# Summary stats
+summary(bond.m6)
+tsdiag(bond.m6, gof = 25)
+
+# Pormanteau test or Ljung-Box test & plot
+# Set fitdf = p + q from arima(order = (p, d, q))
+# Monthly series so test lags at 12 and 24
+Box.test(residuals(bond.m6), lag = 12, fitdf = 6, type = "Ljung")
+Box.test(residuals(bond.m6), lag = 24, fitdf = 6, type = "Ljung")
+# Plot; start at value of fitdf()
+plot(sapply(6:100, function(i) Box.test(residuals(bond.m6), lag = i, 
+                                        fitdf = 6)$p.value), type = "l")
+
+# ACF & PACF of residuals - first lag removed
+par(mfcol = c(2, 1))
+acf(bond.m6$residuals, 25, xlim = c(1, 25), ylim = c(-0.2, 0.2))
+pacf(bond.m6$residuals, 25, ylim = c(-0.2, 0.2))
+par(mfcol = c(1, 1))
+
+# Removing coefficients: t-ratio
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+# Compute the standard error (se)
+bond.m6.se <- sqrt(diag(vcov(bond.m6))); bond.m6.se
+
+# Now calculate the t-ratio
+# Use 1.96 as cutoff - 5% significance level
+bond.m6.tratio <- abs(bond.m6$coef / bond.m6.se)
+bond.m6.tratio
 
 #======================================
-# Q5B
+# Q5B & Q5C
 #======================================
 
+# Set insignificant coefficients to zero; write down the fitted model
+fixed <- c(NA, 0, NA, NA, 0, NA, NA, NA)
+bond.m7 <- arima(y3, order = c(6, 0, 0), xreg = y1, fixed = fixed)
+bond.m7
 
+# Summary stats
+summary(bond.m7)
+tsdiag(bond.m7, gof = 25)
+
+# Pormanteau test or Ljung-Box test & plot
+# Set fitdf = p + q from arima(order = (p, d, q))
+# Monthly series so test lags at 12 and 24
+Box.test(residuals(bond.m7), lag = 12, fitdf = 6, type = "Ljung")
+Box.test(residuals(bond.m7), lag = 24, fitdf = 6, type = "Ljung")
+# Plot; start at value of fitdf()
+plot(sapply(6:100, function(i) Box.test(residuals(bond.m7), lag = i, 
+                                        fitdf = 6)$p.value), type = "l")
+
+# ACF & PACF of residuals - first lag removed
+par(mfcol = c(2, 1))
+acf(bond.m7$residuals, 25, xlim = c(1, 25), ylim = c(-0.2, 0.2))
+pacf(bond.m7$residuals, 25, ylim = c(-0.2, 0.2))
+par(mfcol = c(1, 1))
+
+# Removing coefficients: t-ratio
+# Test the t-ratio of each, remove if abs(x) < 1.96
+
+# Compute the standard error (se)
+bond.m7.se <- sqrt(diag(vcov(bond.m7))); bond.m7.se
+
+# Now calculate the t-ratio
+# Use 1.96 as cutoff - 5% significance level
+bond.m7.tratio <- abs(bond.m7$coef / bond.m7.se)
+bond.m7.tratio
 
 #======================================
-# Q5C
+# Q5D & Q5E
 #======================================
 
+# Does the model imply the existence of business cycles in consumer sentiment?
+# Need to view the polynomial root (pages 56-58 of Intro TS)
+# If results contain complex roots, suggest the existence of business cycles
 
+# Set up the polynomial
+# Only use first six coefficients; last two are intercept + additional variable
+bond.m7.poly <- c(1, -bond.m7$coef[1:6])
 
-#======================================
-# Q5D
-#======================================
+# Solve the equation
+bond.m7.root <- polyroot(bond.m7.poly); bond.m7.root
 
-
-
-#======================================
-# Q5E
-#======================================
-
-
+# Obtain absolute value (modulus)
+Mod(bond.m7.root)
 
 ###############################################################################
 # FIN
