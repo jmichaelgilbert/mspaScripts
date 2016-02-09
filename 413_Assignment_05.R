@@ -236,8 +236,8 @@ which.min(ps.m1$residuals)
 which.max(ps.m1$residuals)
 
 # Identify value of outliers
-ps.m1$residuals[303]
-ps.m1$residuals[441]
+abs(ps.m1$residuals[303])
+abs(ps.m1$residuals[441])
 
 # Create empty data set to remove outlier with arima(xreg = )
 # xreg requires a vector or matrix with the same number of rows as x
@@ -482,6 +482,7 @@ basicStats(y3)
 # Fit the linear regression model with y3 as the dependent variable and y1 as
 # the independent variable
 bond.m1 <- lm(y3 ~ y1)
+bond.m1
 
 # Summary stats
 summary(bond.m1)
@@ -520,8 +521,8 @@ summary(bond.m2)
 
 # ACF & PACF of residuals - first lag removed
 par(mfcol = c(2, 1))
-acf(bond.m2$residuals, 25, xlim = c(1, 25), ylim = c(-0.2, 1.0))
-pacf(bond.m2$residuals, 25, ylim = c(-0.2, 1.0))
+acf(bond.m2$residuals, 25, xlim = c(1, 25), ylim = c(-0.2, 0.2))
+pacf(bond.m2$residuals, 25, ylim = c(-0.2, 0.2))
 par(mfcol = c(1, 1))
 
 #======================================
