@@ -15,7 +15,7 @@ library(fBasics)
 library(fUnitRoots)
 
 # Source backtest function, currently stored in:
-# C:/Users/Michael/Dropbox/MSPA/413-DL/Code/Functions
+# C:/Users/michael.gilbert/Dropbox/MSPA/413-DL/Code/Functions
 
 #==============================================================================
 # Problem 1
