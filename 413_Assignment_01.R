@@ -46,7 +46,7 @@ tableBS(returns[, c(3:6)])
 
 # Transform simple returns to log returns, then repeat
 # A log return is the same as a continuously compounded return
-returnsLog <- log(returns[,3:6]+1)
+returnsLog <- log(returns[, 3:6]+1)
 
 # Get basic stats on log returns on each of the four tickers
 tableBS(returnsLog[, c(1:4)])
@@ -103,7 +103,7 @@ tail(returns)
 
 # Transform simple returns to log returns, then repeat
 # A log return is the same as a continuously compounded return
-returnsLog <- log(returns[,3:6]+1)
+returnsLog <- log(returns[, 3:6]+1)
 
 # GE
 ge <- returnsLog$ge
@@ -135,7 +135,7 @@ pv <- 2*(1-pnorm(abs(geM3))); pv
 #======================================
 
 # Test H0: K = 3 vs. Ha: K != 3, where K = kurtosis of return
-# Here we are testing the tail behavior of geM4 with respect to the mean
+# Here we are testing the tail behavior of geK with respect to the mean
 # This is the fourth moment (M4)
 geM4 <- kurtosis(ge, method = "excess")/sqrt(24/length(ge)); geM4
 
