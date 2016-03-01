@@ -12,7 +12,7 @@ library(fBasics)
 library(fGarch)
 library(fUnitRoots)
 
-# Source functions:
+# Source functions
 setwd("C:/Users/Michael/Dropbox/MSPA/413-DL/Code/Functions")
 source("413_Function_backtest.R")
 source("413_Function_Igarch.R")
