@@ -141,7 +141,6 @@ ccm(qgdp.log.diff.pc[, 3:5], level = T, output = T)
 # Test the following hypotheses using a 5% significance level:
 #   H0: p1 = ... = pn = 0
 #   Ha: pi != 0 for some i, where {1, ..., n}
-# Suggests VMA(4)
 mq(qgdp.log.diff.pc[, 3:5])
 
 # Use VMAorder to determine model order
@@ -160,7 +159,7 @@ apply(qgdp.log.diff.pc[, 3:5], 2, t.test)
 # Model VAR(4)
 #------------------
 
-# Build Model
+# Build model
 qgdp.m1 <- VAR(qgdp.log.diff.pc[, 3:5], p = 4, output = T)
 
 # Fix threshold (remove significant coefficients at the 5% level)
@@ -173,6 +172,7 @@ MTSdiag(qgdp.m1.fixed)
 # Model VAR(2)
 #------------------
 
+# Build model
 qgdp.m2 <- VAR(qgdp.log.diff.pc[, 3:5], p = 2, output = T)
 
 # Fix threshold (remove significant coefficients at the 5% level)
