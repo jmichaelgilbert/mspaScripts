@@ -125,6 +125,7 @@ Box.test(spx.log.arch^2, lag = 12, type = "Ljung")
 # Model 1: GARCH(1,1) | Normal Distribution
 #------------------
 
+# Build model
 spx.log.m1 <- garchFit(~garch(1, 1), data = spx.log, trace = F)
 
 # Model adequacy
@@ -162,6 +163,7 @@ par(mfcol = c(1, 1))
 # Model 2: GARCH(1,1) | Student-t Innovation
 #------------------
 
+# Build model
 spx.log.m2 <- garchFit(~garch(1, 1), data = spx.log, trace = F, 
                        cond.dist = "std")
 
@@ -200,6 +202,7 @@ par(mfcol = c(1, 1))
 # Model 3: GARCH(1,1) | Skewed Student-t Innovation
 #------------------
 
+# Build model
 spx.log.m3 <- garchFit(~garch(1, 1), data = spx.log, trace = F, 
                        cond.dist = "sstd")
 
@@ -395,6 +398,7 @@ Box.test(fx.log^2, lag = 10, type = "Ljung")
 # Note: same as GARCH(1,1) with leverage = T
 #------------------
 
+# Build model
 fx.log.m1 <- garchFit(~aparch(1, 1), data = fx.log, include.mean = F, delta = 2,
                       include.delta = F, trace = F, cond.dist = "std")
 
@@ -447,6 +451,7 @@ fx.log.pc <- (fx.log*100)
 # Note: same as APARCH(1,1) with leverage = F
 #------------------
 
+# Build model
 fx.log.pc.m1 <- garchFit(~garch(1, 1), data = fx.log.pc, trace = F, 
                          cond.dist = "std", leverage = T, include.mean = F)
 
