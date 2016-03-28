@@ -1,9 +1,8 @@
 ---
-title: "422_Assignment_01_Gilbert"
+title: "422_Programming_Assignment_01"
 author: "Michael Gilbert"
-date: "March 23, 2016"
-output: 
-  html_document
+date: "March 28, 2016"
+output: github_document
 ---
 \
 ```{r setup, include = F}
