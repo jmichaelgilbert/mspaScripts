@@ -8,9 +8,7 @@ output:
     fig_height: 5
     fig_width: 6
 ---
-
 \
-
 Workspace cleanup and prep:
 ```{r setup.R, message = F, warning = F}
 # Clear workspace
@@ -39,7 +37,7 @@ knitr::opts_knit$set(global.par = T)
 This exercise relates to the `College` data set, which can be found in the file `College.csv`. It contains a number of variables for the 777 different universities and colleges in the US. _[Note: variable list excluded]_
 
 (a) Use the `read.csv()` function to read the data into `R`. Call the loaded data `college`. Make sure that you have the directory set to the correct location for the data.
-\
+
 ```{r Ex8a, indent = "    "}
 # Download and assign data
 if(!file.exists("~/College.csv")){
@@ -50,12 +48,12 @@ if(!file.exists("~/College.csv")){
 ```
     
 (b) Look at the data using the `fix()` function. You should notice that the  first column is just the name of each university. We don't really want `R` to treat this as data. However, it may be handy to have these names for later. Try the following commands:
-    
+
 ```{r Ex8b1a, indent = "    ", eval = F}
 > rownames(college)=college[,1]
 > fix(college)
 ```
-\
+
 ```{r Ex8b1b, indent = "    "}
 # Execute commands
 rownames(college) <- college[, 1]
@@ -68,7 +66,7 @@ fix(college)
 > college=college[,-1]
 > fix(college)
 ```
-\
+
 ```{r Ex8b2b, indent = "    "}
 # Execute commands
 college <- college[, -1]
@@ -79,14 +77,14 @@ fix(college)
 
 (c) 
     i. Use the `summary()` function to produce a numerical summary of the variables in the data set.
-\
+
 ```{r Ex8c1, indent = "        "}
 # Explore summary stats
 summary(college)
 ```
     
     ii. Use the `pairs()` function to produce a scatterplot matrix of the first ten columns or variables of the data. Recall that you can reference the first ten columns of a matrix `A` using `A[,1:10]`.
-\
+
 ```{r Ex8c2, indent = "        ", fig.width = 8, fig.height = 7}
 # Scatterplot matrix of first ten columns
 pairs(college[, 1:10], 
@@ -94,7 +92,7 @@ pairs(college[, 1:10],
 ```
     
     iii. Use the `plot()` function to produce side-by-side boxplots of `Outstate` versus `Private`.
-\
+
 ```{r Ex8c3, indent = "        ", fig.width = 7, fig.height = 6}
 # Boxplots of Outstate versus Private
 boxplot(college$Outstate ~ college$Private,
@@ -103,14 +101,14 @@ boxplot(college$Outstate ~ college$Private,
 ```
     
     iv. Create a new qualitative variable, called `Elite`, by _binning_ the `Top10perc` variable. We are going to divide universities into two groups based on whether or not the proportion of students coming from the top 10% of their high school classes exceeds 50%.
-    
+
 ```{r Ex8c4a, indent = "        ", eval = F}
 > Elite=rep("No",nrow(college))
 > Elite[college$Top10perc >50]="Yes"
 > Elite=as.factor(Elite)
 > college=data.frame(college, Elite)
 ```
-\
+
 ```{r Ex8c4b, indent = "        "}
 # Execute commands
 Elite <- rep("No", nrow(college))
@@ -126,7 +124,7 @@ rm(Elite)
 # Use summary() to determine count of elite universities
 summary(college$Elite)
 ```
-    
+
 ```{r Ex8c4d, indent = "        ", fig.width = 7, fig.height = 6}
 # Boxplots of Outstate versus Elite
 boxplot(college$Outstate ~ college$Elite,
@@ -135,6 +133,7 @@ boxplot(college$Outstate ~ college$Elite,
 ```
     
     v. Use the `hist()` function to produce some histograms with differing numbers of bins for a few of the quantitative variables. You may find the command `par(mfrow=c(2,2))` useful: it will divide the print window into four regions so that four plots can be made simultaneously. Modifying the arguments to this function will divide the screen in other ways.
+\
 \
         _Note: Histograms in this question and the question that follows are plotted with bins of equally spaced probabilities. The widths of the bins vary, but the area represented by each bin is the same. The varying widths can help illustrate properties of the distribution._
     
@@ -184,6 +183,7 @@ par(mfcol = c(1, 1))
     
     vi. Continue exploring the data, and provide a brief summary of what you discover.
 \
+\
         An earlier question looked at the basic statistics of variables from the `summary()` function in `{base}`. Two interesting variables are explored further here.
 \
 \
@@ -206,7 +206,7 @@ plot(fitdist(college$Grad.Rate, "norm", method = "mle"), demp = T,
         * For an institution to distribute an honorary degree, must it first _accept_ the recipient as a student? 
         * If so, what effect does that have on financial transactions (e.g. a student must apply to be accepted, to apply requires payment of an application fee)?
         
-\
+        \ 
         
         `Grad.Rate` was sorted and examined further:
     
@@ -249,7 +249,7 @@ tail(data.frame(college = row.names(college), college$Top10perc), n = 15)
 ### Exercise 9:
 
 This exercise involves the `Auto` data set studied in the lab. Make sure that the missing values have been removed from the data.
-\
+
 ```{r Ex9base1}
 # Download and assign data
 if(!file.exists("~/Auto.csv")){
@@ -305,6 +305,7 @@ Viola!
 
 (a) Which of the predictors are quantitative, and which are qualitative?
 \
+\
     Both quantitative and qualitative data may be further divided:
         
     * _Quantitative_ data may be _interval-level_ data or _ratio-level_ data. These data types are also referred to as _continuous_ data.
@@ -317,6 +318,8 @@ Viola!
 # Qualitative variables ask "Which?"
 # Source: http://pirate.shu.edu/~hovancjo/exp/classification_of_variables.htm
 ```
+    
+    \ 
     
     Each of the variables of the `Auto` data are examined below. A brief justification accompanies the reasoning behind the classification.
     
@@ -337,6 +340,8 @@ Viola!
     * `origin` takes on a numeric value, however is a _qualitative_ predictor at heart as each value corresponds to a continent or country the motor vehicle was produced in (or the headquarters of the brand). An `origin` of `1` corresponds to the United States, of `2` to Europe, and of `3` to Japan.
     
     * `name` refers to the make and model of the motor vehicle, and is a _qualitative_ predictor. Without _a priori_ knowledge, it is impossible to judge or make comparisons between observations with different values for `name`.
+    
+    \ 
     
     The variable `origin` was converted to a factor variable, a factor version of the `cylinders` variable was created and merged with the `Auto` data, and `horsepower` was converted to a numeric variable:
     
@@ -362,7 +367,7 @@ auto$horsepower <- as.numeric(as.character(auto$horsepower))
 ```
     
 (b) What is the _range_ of each quantitative predictor? You can answer this using the `range()` function.
-\
+
 ```{r Ex9b, indent = "    ", results = "hold"}
 # Assign temp data.frame() IFF variables are not factors
 temp <- auto[, !sapply(auto, is.factor)]
@@ -378,7 +383,7 @@ round(temp, digits = 2); rm(temp)
 ```
     
 (c) What is the mean and standard deviation of each quantitative predictor?
-\
+
 ```{r Ex9c, indent = "    ", results = "hold"}
 # Assign temp data.frame() IFF variables are not factors
 temp <- auto[, !sapply(auto, is.factor)]
@@ -394,6 +399,7 @@ round(temp, digits = 2); rm(temp)
 ```
     
 (d) Now remove the 10th through 85th observations. What is the range, mean, and standard deviation of each predictor in the subset of the data that remains?
+\
 \
     From the beginning of Exercise 9, the `Auto` data set was sorted on `horsepower` to easily identify the `NA` character `?`. In order to remove the intended observations, the `Auto` data set should be sorted by `row.names`, which serve as an index key in this instance.
     
@@ -422,6 +428,7 @@ round(temp, digits = 2); rm(temp)
 ```
     
 (e) Using the full data set, investigate the predictors graphically, using scatterplots or other tools of your choice. Create some plots highlighting the relationships among the predictors. Comment on your findings.
+\
 \
     First, a `data.frame` called `temp` was created of non-factor variables.
     
@@ -483,6 +490,7 @@ rm(temp)
     __Findings__: Despite `year` and `cylinders.int` being _numeric_ variables, there is no clear linear relationship against other variables. That said, `clyinders.int` might be used to create _flag_, _dummy_, or _indicator_ variables (here, these terms are used interchangeably). How do these relationships change when they are classified by levels of `cylinders.int`? With `year`, it is clear that as time goes on the general `mpg` improves. Perhaps classifying `name` into something like `vehicle.type` would be a useful relationship to explore. 
     
 (f) Suppose that we wish to predict gas mileage (`mpg`) on the basis of the other variables. Do your plots suggest that any of the other variables might be useful in predicting `mpg`? Justify your answer.
+\
 \
     In addition to the plots, the correlation between `mpg` and other non-factor variables was examined.
     
