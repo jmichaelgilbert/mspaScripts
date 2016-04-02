@@ -39,7 +39,7 @@ knitr::opts_knit$set(global.par = T)
 This exercise relates to the `College` data set, which can be found in the file `College.csv`. It contains a number of variables for the 777 different universities and colleges in the US. _[Note: variable list excluded]_
 
 (a) Use the `read.csv()` function to read the data into `R`. Call the loaded data `college`. Make sure that you have the directory set to the correct location for the data.
-    
+\
 ```{r Ex8a, indent = "    "}
 # Download and assign data
 if(!file.exists("~/College.csv")){
@@ -55,7 +55,7 @@ if(!file.exists("~/College.csv")){
 > rownames(college)=college[,1]
 > fix(college)
 ```
-    
+\
 ```{r Ex8b1b, indent = "    "}
 # Execute commands
 rownames(college) <- college[, 1]
@@ -68,7 +68,7 @@ fix(college)
 > college=college[,-1]
 > fix(college)
 ```
-    
+\
 ```{r Ex8b2b, indent = "    "}
 # Execute commands
 college <- college[, -1]
@@ -79,14 +79,14 @@ fix(college)
 
 (c) 
     i. Use the `summary()` function to produce a numerical summary of the variables in the data set.
-    
+\
 ```{r Ex8c1, indent = "        "}
 # Explore summary stats
 summary(college)
 ```
     
     ii. Use the `pairs()` function to produce a scatterplot matrix of the first ten columns or variables of the data. Recall that you can reference the first ten columns of a matrix `A` using `A[,1:10]`.
-    
+\
 ```{r Ex8c2, indent = "        ", fig.width = 8, fig.height = 7}
 # Scatterplot matrix of first ten columns
 pairs(college[, 1:10], 
@@ -94,7 +94,7 @@ pairs(college[, 1:10],
 ```
     
     iii. Use the `plot()` function to produce side-by-side boxplots of `Outstate` versus `Private`.
-    
+\
 ```{r Ex8c3, indent = "        ", fig.width = 7, fig.height = 6}
 # Boxplots of Outstate versus Private
 boxplot(college$Outstate ~ college$Private,
@@ -110,7 +110,7 @@ boxplot(college$Outstate ~ college$Private,
 > Elite=as.factor(Elite)
 > college=data.frame(college, Elite)
 ```
-    
+\
 ```{r Ex8c4b, indent = "        "}
 # Execute commands
 Elite <- rep("No", nrow(college))
@@ -135,7 +135,7 @@ boxplot(college$Outstate ~ college$Elite,
 ```
     
     v. Use the `hist()` function to produce some histograms with differing numbers of bins for a few of the quantitative variables. You may find the command `par(mfrow=c(2,2))` useful: it will divide the print window into four regions so that four plots can be made simultaneously. Modifying the arguments to this function will divide the screen in other ways.
-    
+\
         _Note: Histograms in this question and the question that follows are plotted with bins of equally spaced probabilities. The widths of the bins vary, but the area represented by each bin is the same. The varying widths can help illustrate properties of the distribution._
     
 ```{r Ex8c5a, include = F}
@@ -183,12 +183,12 @@ par(mfcol = c(1, 1))
 ```
     
     vi. Continue exploring the data, and provide a brief summary of what you discover.
-        
+\
         An earlier question looked at the basic statistics of variables from the `summary()` function in `{base}`. Two interesting variables are explored further here.
-        \
-        \
+\
+\
         __Variable: Grad.Rate__
-        \
+\
         _where, Grad.Rate = graduation rate_
     
 ```{r Ex8c6a, indent = "        ", fig.width = 8, fig.height = 7, warning = F}
@@ -202,11 +202,11 @@ plot(fitdist(college$Grad.Rate, "norm", method = "mle"), demp = T,
         
         The empirical quantile value of this extreme observation is peculiar: it is greater than 100. A coffee mug cannot hold more than 100 percent of its volume. _Prima facie_,  it seems a post-secondary institution cannot have a graduation rate above 100 percent. The gut response is this value was entered erroneously, perhaps due to an actor hitting the number `1` twice. But, this also presents interesting philosophical questions related to data models and business processes: 
         
-        * What if this institution distributed an outsized number of honorary degrees? 
-        * For an institution to distribute an honorary degree, must it first accept the recipient? 
-        * If so, what effect does that have on financial transactions?
+        * What if this institution distributed an outsized number of honorary degrees, and those were counted in the computing `Grad.Rate`? 
+        * For an institution to distribute an honorary degree, must it first _accept_ the recipient as a student? 
+        * If so, what effect does that have on financial transactions (e.g. a student must apply to be accepted, to apply requires payment of an application fee)?
         
-        \
+\
         
         `Grad.Rate` was sorted and examined further:
     
@@ -218,11 +218,11 @@ college <- college[order(college$Grad.Rate), ]
 tail(data.frame(college = row.names(college), college$Grad.Rate), n = 15)
 ```
     
-        The results pass the 'smell test': it does not _seem_ unreasonable for the institutions listed to have such high observation values for `Grad.Rate`.
-        \
-        \
+        The results pass the 'smell test': it does not _seem_ unreasonable for the institutions listed to have such high observation values for `Grad.Rate` (with the exception of Cazenovia College).
+\
+\
         __Variable: Top10perc__
-        \
+\
         _where, Top10perc = new students from top 10 percent of high school class_
     
 ```{r Ex8c6c, indent = "        ", fig.width = 8, fig.height = 7, warning = F}
@@ -232,7 +232,7 @@ plot(fitdist(college$Top10perc, "weibull", method = "mle"), demp = T,
      by = 0.1)))
 ```
     
-        While other variables were also explored, `Top10perc` is included here because it appears to have a decent fit to the theoretical Weibull distribution. Frankly, it's pretty cool to see a distribution other than the more common ones explored in the MSPA program (e.g. Normal, Student's t, Poisson, Binomial, Negative Binomial, etc.).
+        While other variables were also explored, `Top10perc` is included here because it appears to have a decent fit to the theoretical Weibull distribution. Frankly, it was pretty cool to see a distribution other than the more common ones explored so far in the MSPA program (e.g. Normal, Student's t, Poisson, Binomial, Negative Binomial, etc.).
         
         The Q-Q plot shows deviation in the upper tail. Similar to `Grad.Rate`, the empirical quantile values beg the question of _realism_. `Top10perc` was sorted and examined further:
     
@@ -249,7 +249,7 @@ tail(data.frame(college = row.names(college), college$Top10perc), n = 15)
 ### Exercise 9:
 
 This exercise involves the `Auto` data set studied in the lab. Make sure that the missing values have been removed from the data.
-
+\
 ```{r Ex9base1}
 # Download and assign data
 if(!file.exists("~/Auto.csv")){
@@ -277,9 +277,9 @@ A more detailed look at possible `NA` values follows. Starting with the `class()
 sapply(auto, class)
 ```
 
-Notice anything odd? `horsepower` and `name` are listed as having class `factor`. However, in `R`, categorical variables (such as the make and model of a motor vehicle) can be treated as a `factor` (see `?factor` for more information), so `name` _likely_ does not contain missing values.
+Notice anything odd? `horsepower` and `name` are listed as having class `factor`. However, in `R`, categorical variables (such as the make and model of a motor vehicle) can be treated as class `factor` (see `?factor` for more information), so `name` _likely_ does not contain missing values.
 
-Further examination of `horsepower` shows some observations contain a `?`. Those should be treated as `NA` values and removed:
+Further examination of `horsepower` shows some observations contain a `?` character. Those should be treated as `NA` values and removed:
 
 ```{r Ex9base3}
 # Sort by horsepower
@@ -304,7 +304,7 @@ dim(auto)
 Viola!
 
 (a) Which of the predictors are quantitative, and which are qualitative?
-    
+\
     Both quantitative and qualitative data may be further divided:
         
     * _Quantitative_ data may be _interval-level_ data or _ratio-level_ data. These data types are also referred to as _continuous_ data.
@@ -318,23 +318,23 @@ Viola!
 # Source: http://pirate.shu.edu/~hovancjo/exp/classification_of_variables.htm
 ```
     
-    Each of the variables of the `Auto` data is examined below. A brief justification accompanies the reasoning behind the classification.
+    Each of the variables of the `Auto` data are examined below. A brief justification accompanies the reasoning behind the classification.
     
-    * `mpg` refers to the miles per gallon a motor vehicle is estimated to get, and is a _quantitative_ predictor. The values [should] all be numeric, and the ratio between values has meaning. A motor vehicle that with `mpg` of 20 gets half as many miles per gallon as a motor vehicle with `mpg` of 40. `mpg` is also a _continuous_ variable as it can take on any possible value.
+    * `mpg` refers to the miles per gallon a motor vehicle is estimated to get, and is a _quantitative_ predictor. The values [should all] be numeric, and the ratio between values has meaning. A motor vehicle with `mpg` of 20 gets half as many miles per gallon as a motor vehicle with `mpg` of 40. `mpg` is also a _continuous_ variable as it can take on any possible value.
     
-    * `cylinders` refers to the number of cylinders a motor vehicle has, and is a _quantitative_ predictor. `cylinders` is also a _discrete_ variable as it can only take on integer values. While the number of cylinders may colloquially be referred to as a "category", the ratio between values has meaning. However, _depending on the purpose of the model and the task at hand_, `cylinders` might be treated as a _qualitative_ predictor, since the range of values is relatively small.
+    * `cylinders` refers to the number of cylinders a motor vehicle has, and is a _quantitative_ predictor. `cylinders` is also a _discrete_ variable as it can only take on integer values. While the number of cylinders may colloquially be referred to as a "category", the ratio between values does have meaning. However, _depending on the purpose of the model and the task at hand_, `cylinders` could also be treated as a _qualitative_ predictor, since the range of values is relatively small, and using `cylinders` as a classifier could be interesting.
     
-    * `displacement` is a measure volume in engine cylinders, and is a _quantitative_ predictor. `displacement` is also a _continuous_ variable as it can take on any possible value (within the upper and lower bounds).
+    * `displacement` is a measure of volume in engine cylinders, and is a _quantitative_ predictor. `displacement` is also a _continuous_ variable as it can take on any possible value (within upper and lower bounds).
     
-    * `horsepower` is a measure of the amount of work and engine can produce, and is a _quantitative_ predictor. `horsepower` is also a _continuous_ variable as it can take on any possible value.
+    * `horsepower` is a measure of the amount of work an engine can produce, and is a _quantitative_ predictor. `horsepower` is also a _continuous_ variable as it can take on any possible value.
     
     * `weight` is a measure of gravitational pull, and is a _quantitative_ predictor (while your `weight` may vary between here and Mars, your `mass` will not). `weight` is also a _continuous_ variables as it can take on any possible value.
     
-    * `acceleration` is a measure of distance covered over time (often expressed in amount of time to go from one velocity to another, e.g. 0-60 mph), and is a _quantitative_ predictor. `acceleration` is also a _continuous_ variable as it can take on any possible value.
+    * `acceleration` is a measure of distance covered over time (often expressed in the amount of time to go from one velocity to another, e.g. 0-60 mph), and is a _quantitative_ predictor. `acceleration` is also a _continuous_ variable as it can take on any possible value.
     
-    * `year` is a measure of time, specifically when the motor vehicle was produced, and is a _quantitative_ predictor. In the `Auto` data set, `year` is also a _discrete_ variable as it can only take on integer values. There are rare instances of a motor vehicle being assigned a half-year value, and even then the designation is often not one from the manufacturer (e.g. 1964.5 Ford Mustang).
+    * `year` is a measure of time, specifically the model year of the motor vehicle, and is a _quantitative_ predictor. In the `Auto` data set, `year` is also a _discrete_ variable as it can only take on integer values. There are rare instances of a motor vehicle being assigned a half-year value, though even then the designation is often not one from the manufacturer (e.g. 1964.5 Ford Mustang).
     
-    * `origin` takes on a numeric value, however is a _qualitative_ predictor at heart as each value corresponds to a continent or country the motor vehicle was produced in. An `origin` of `1` corresponds to the United States, of `2` to Europe, and of `3` to Japan.
+    * `origin` takes on a numeric value, however is a _qualitative_ predictor at heart as each value corresponds to a continent or country the motor vehicle was produced in (or the headquarters of the brand). An `origin` of `1` corresponds to the United States, of `2` to Europe, and of `3` to Japan.
     
     * `name` refers to the make and model of the motor vehicle, and is a _qualitative_ predictor. Without _a priori_ knowledge, it is impossible to judge or make comparisons between observations with different values for `name`.
     
@@ -362,7 +362,7 @@ auto$horsepower <- as.numeric(as.character(auto$horsepower))
 ```
     
 (b) What is the _range_ of each quantitative predictor? You can answer this using the `range()` function.
-    
+\
 ```{r Ex9b, indent = "    ", results = "hold"}
 # Assign temp data.frame() IFF variables are not factors
 temp <- auto[, !sapply(auto, is.factor)]
@@ -378,7 +378,7 @@ round(temp, digits = 2); rm(temp)
 ```
     
 (c) What is the mean and standard deviation of each quantitative predictor?
-    
+\
 ```{r Ex9c, indent = "    ", results = "hold"}
 # Assign temp data.frame() IFF variables are not factors
 temp <- auto[, !sapply(auto, is.factor)]
@@ -394,7 +394,7 @@ round(temp, digits = 2); rm(temp)
 ```
     
 (d) Now remove the 10th through 85th observations. What is the range, mean, and standard deviation of each predictor in the subset of the data that remains?
-    
+\
     From the beginning of Exercise 9, the `Auto` data set was sorted on `horsepower` to easily identify the `NA` character `?`. In order to remove the intended observations, the `Auto` data set should be sorted by `row.names`, which serve as an index key in this instance.
     
 ```{r Ex9d1, indent = "    "}
@@ -422,7 +422,7 @@ round(temp, digits = 2); rm(temp)
 ```
     
 (e) Using the full data set, investigate the predictors graphically, using scatterplots or other tools of your choice. Create some plots highlighting the relationships among the predictors. Comment on your findings.
-    
+\
     First, a `data.frame` called `temp` was created of non-factor variables.
     
 ```{r Ex9e1, indent = "    ", fig.width = 8, fig.height = 7}
@@ -483,7 +483,7 @@ rm(temp)
     __Findings__: Despite `year` and `cylinders.int` being _numeric_ variables, there is no clear linear relationship against other variables. That said, `clyinders.int` might be used to create _flag_, _dummy_, or _indicator_ variables (here, these terms are used interchangeably). How do these relationships change when they are classified by levels of `cylinders.int`? With `year`, it is clear that as time goes on the general `mpg` improves. Perhaps classifying `name` into something like `vehicle.type` would be a useful relationship to explore. 
     
 (f) Suppose that we wish to predict gas mileage (`mpg`) on the basis of the other variables. Do your plots suggest that any of the other variables might be useful in predicting `mpg`? Justify your answer.
-    
+\
     In addition to the plots, the correlation between `mpg` and other non-factor variables was examined.
     
 ```{r Ex9f1, indent = "    "}
