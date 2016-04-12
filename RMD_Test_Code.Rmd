@@ -1,0 +1,78 @@
+---
+output: 
+  pdf_document: 
+    fig_caption: yes
+    fig_crop: no
+    fig_width: 5.75
+    fig_height: 4.75
+geometry: margin = 0.5in
+---
+\
+Workspace cleanup and prep:
+```{r setup.R, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(boot)
+library(corrplot)
+library(dplyr)
+library(forecast)
+library(knitr)
+library(MASS)
+library(RCurl)
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+```{r Ex15base1, results = "hide"}
+# Load and assign data
+data(Boston); Boston
+
+# View summary statistics
+summary(Boston)
+
+# Examine dimensions (pre-NA removal)
+dim(Boston)
+
+# Assign new data.frame with missing values removed
+Boston <- na.omit(Boston)
+
+# Examine dimensions (post-NA removal)
+dim(Boston)
+```
+
+```{r include = F}
+par(mfcol = c(2, 2))
+```
+    
+(a)
+    
+```{r indent = "    "}
+# Create loop for results
+for (i in names(Boston)[12:14]){
+    plot(lm(as.formula(paste("crim ~", i, "+I(", i, "^2)", "+I(", i, "^3)")), 
+            data = Boston), main = paste("Variable:", i), ask = F)
+    cat("\n\n")
+}
+```
+
+```{r include = F}
+par(mfcol = c(1, 1))
+```
+
+```{r FIN, eval = T}
+# FIN
+par("mar")
+par("mai")
+par("oma")
+```
