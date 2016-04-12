@@ -6,10 +6,10 @@ output:
   pdf_document:
     fig_caption: yes
     fig_crop: no
-    fig_width: 5
-    fig_height: 4
+    fig_width: 5.75
+    fig_height: 4.75
     highlight: tango
-geometry: margin = 0.75in
+geometry: margin = 0.5in
 ---
 \
 Workspace cleanup and prep:
@@ -68,7 +68,7 @@ if(!file.exists("~/Auto.csv")){
 }
 
 # View summary statistics
-summary(Boston)
+summary(auto)
 
 # Examine dimensions (pre-NA removal)
 dim(auto)
@@ -497,11 +497,8 @@ par(mfcol = c(2, 2))
 ```{r Ex15a2, indent = "    "}
 # Produce diagnostic plots of statistically significant results
 for (i in rownames(slr.pv)){
-    for (j in 1:4){
-        plot(lm(as.formula(paste("crim ~", i)), data = Boston),
-             main = paste("Variable:", i), which = j)
-        cat("\n\n")
-    }
+    plot(lm(as.formula(paste("crim ~", i)), data = Boston),
+             main = paste("Variable:", i), ask = F)
     cat("\n\n")
 }
 ```
@@ -597,11 +594,8 @@ par(mfcol = c(2, 2))
 ```{r Ex15d1, indent = "    "}
 # Create loop for results
 for (i in names(Boston)[2:14]){
-    for (j in 1:4){
-        plot(lm(as.formula(paste("crim ~", i, "+I(", i, "^2)", "+I(", i, "^3)")), 
-                data = Boston), main = paste("Variable:", i), which = j)
-        cat("\n\n")
-    }
+    plot(lm(as.formula(paste("crim ~", i, "+I(", i, "^2)", "+I(", i, "^3)")), 
+            data = Boston), main = paste("Variable:", i), ask = F)
     cat("\n\n")
 }
 ```
