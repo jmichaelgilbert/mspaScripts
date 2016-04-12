@@ -1,0 +1,949 @@
+---
+title: '422-57: Programming Assignment 02'
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    fig_height: 5
+    fig_width: 6
+    highlight: tango
+---
+\
+Workspace cleanup and prep:
+```{r setup.R, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(boot)
+library(corrplot)
+library(dplyr)
+library(forecast)
+library(knitr)
+library(MASS)
+library(RCurl)
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+```{r Functions}
+# Functions
+
+#--------------------------------------
+# fit()
+#--------------------------------------
+# Function to add MSE to other measures from forecast::accuracy
+fit <- function(data){
+    temp <- data.frame(forecast::accuracy(data), 
+                       forecast::accuracy(data)[, 2]^2)
+    colnames(temp)[7] <- "MSE"
+    temp <- temp[c(1, 7, 2, 3, 4, 5, 6)]
+    print(temp)
+}
+```
+
+## ISLR, Section 3.7
+### Exercise 9:
+
+This question involves the use of multiple linear regression on the `Auto` data set.
+
+```{r Ex9base1}
+# Download and assign data
+if(!file.exists("~/Auto.csv")){
+    URL <- getURL("http://www-bcf.usc.edu/~gareth/ISL/Auto.csv")
+    auto <- read.csv(textConnection(URL), header = T)
+    rm(URL)
+}
+
+# View summary statistics
+summary(Boston)
+
+# Examine dimensions (pre-NA removal)
+dim(auto)
+
+# Treat "?" as NA
+auto[auto == "?"] <- NA
+
+# Assign new data.frame with missing values removed
+auto <- na.omit(auto)
+
+# Examine dimensions (post-NA removal)
+dim(auto)
+
+# Convert horsepower to numeric
+# Note: when converting factors to numeric, first convert to character;
+#   this preserves any decimals present in data
+auto$horsepower <- as.numeric(as.character(auto$horsepower))
+```
+
+(a) Produce a scatterplot matrix which includes all of the variables in the data set.
+    
+```{r Ex9a1, indent = "    ", fig.width = 8, fig.height = 8}
+# Scatterplot matrix of variables
+pairs(auto, main = "Scatterplot Matrix: Variables of 'Auto.csv'")
+```
+    
+(b) Compute the matrix of correlations between the variables using the function `cor()`. You will need to exclude the `name` variable, which is qualitative.
+    
+```{r Ex9b1, indent = "    "}
+# Examine correlation between variables
+round(cor(auto[, !sapply(auto, is.factor)]), digits = 4)
+
+# Produce plot of correlation between variables
+corrplot(cor(auto[, !sapply(auto, is.factor)]), 
+         tl.col = "black", tl.cex = 0.8, tl.srt = 45)
+```
+    
+(c) Use the `lm()` function to perform a multiple linear regression with `mpg` as the response and all other variables except `name` as the predictors. Use the `summary()` function to print the results. 
+    
+```{r Ex9c1, indent = "    "}
+# Multiple linear regression
+#   model = "auto.m1", response = "mpg", exclude = "name"
+auto.m1 <- lm(mpg ~ . -name, data = auto)
+```
+
+```{r Ex9c2, indent = "    "}
+# View summary of model fit
+summary(auto.m1)
+
+# View accuracy of model fit
+accuracy(auto.m1)
+```
+    
+    Comment on the output. For instance:
+    
+    i. Is there a relationship between the predictors and the response?
+\
+\
+        Hypothesis testing is used to determine if a relationship exists between the predictors and the response. 
+        
+        The null hypothesis is:
+    
+        $H_0 : \beta_1 = \beta_2 = ... = \beta_p = 0$
+        
+        The alternate hypothesis is:
+        
+        $H_a :$ at least one $\beta_j$ is non-zero.
+        
+        The `auto.m1` model produces a F-statistic of 252.4 on 7 variables with 384 degrees of freedom. The corresponding p-value approximates zero and is statistically significant at the 5% level. We reject the null hypothesis that the $\beta$ coefficients are all equal to zero. This suggests that _at least one_ of the predictor variables has a relationship to the response variable `mpg` (i.e. is non-zero).
+        
+    ii. Which predictors appear to have a statistically significant relationship to the response?
+\
+\
+        The `auto.m1` model uses an $\alpha$ level of 0.05. "When _p_ is low, reject the null." Put another way, a p-value less than the value of $\alpha$ is statistically significant. 
+        
+        Reviewing the results of the `summary()` function, the following predictor variables are considered to have a statistically significant relationship to the response variable `mpg`: `displacement`, `weight`, `year`, and `origin`.
+    
+    iii. What does the coefficient for the `year` variable suggest?
+\
+\
+        The coefficient for the `year` variable suggests that for a one unit increase in `year`, we expect a 0.75 unit increase in `mpg`. This is intuitive, as (on the whole) `mpg` improves over time due to scientific and technological advances. 
+        
+        One possible explanation of this is that motor vehicle manufacturers are incented to design and deploy more efficient motors, as given the choice between two otherwise identical vehicles, a rational consumer would purchase the version with the more efficient motor (efficient = greater `mpg`).
+
+(d) Use the `plot()` function to produce diagnostic plots of the linear regression fit. Comment on any problems you see with the fit. Do the residual plots suggest any unusually large outliers? Does the leverage plot identify any observations with unusually high leverage?
+
+```{r include = F}
+par(mfcol = c(2, 2))
+```
+
+```{r Ex9d1, indent = "    ", fig.width = 8, fig.height = 8}
+# Produce diagnostic plots of model
+plot(auto.m1, main = "Model: auto.m1", ask = F)
+```
+
+```{r include = F}
+par(mfcol = c(1, 1))
+```
+    
+    __Comments on results:__ The residuals take on a slight 'bow' shape, suggesting a transformation may be necessary, and there is non-linearity present. The residuals also appear to be heteroscedastic given they have a detectable shape. The Normal Q-Q plot shows significant deviation in the upper tail. There does appear to be a number of residuals that suggest unusually large outliers, the `plot.lm()` function has conveniently labeled some of these observations.
+    
+```{r Ex9d2, indent = "    "}
+# Identify observation with largest amount of leverage
+which.max(hatvalues(auto.m1))
+```
+    
+    Observation 14 has an unusually large leverage statistic.
+    
+(e) Use the `*` and `:` symbols to fit linear regression models with interaction effects. Do any interactions appear to be statistically significant?
+\
+\
+    _Note: The `*` was not used as the `.` symbol in the `lm()` function already covers the individual variables._
+    
+    The `corrplot` diagram from Ex9(b) was examined for candidate interaction terms.
+\
+\
+    __Interaction: Displacement & Clyinders__
+\
+    The interaction between `displacement` and `cylinders` looked promising:
+    
+```{r Ex9e1a, indent = "    "}
+# Multiple linear regression
+#   model = "auto.m2", response = "mpg", exclude = "name"
+#   interaction = displacement:cylinders
+auto.m2 <- lm(mpg ~ . +displacement:cylinders -name , data = auto)
+```
+
+```{r Ex9e1b, indent = "    "}
+# View summary of model fit
+summary(auto.m2)
+```
+    
+    The p-value resulting from the interaction between `displacement` and `cylinders` approximates zero and is statistically significant at the 5% level.
+\
+\
+    __Interaction: Displacement & Weight__
+\
+    The interaction between `displacement` and `weight` looked promising:
+    
+```{r Ex9e2a, indent = "    "}
+# Multiple linear regression
+#   model = "auto.m3", response = "mpg", exclude = "name"
+#   interaction = displacement:weight
+auto.m3 <- lm(mpg ~ . +displacement:weight -name, data = auto)
+```
+
+```{r Ex9e2b, indent = "    "}
+# View summary of model fit
+summary(auto.m3)
+```
+    
+    The p-value resulting from the interaction between `displacement` and `weight` approximates zero and is statistically significant at the 5% level.
+\
+\
+    __Interaction: Displacement & Horsepower__
+\
+    The interaction between `displacement` and `horsepower` looked promising:
+
+```{r Ex9e3a, indent = "    "}
+# Multiple linear regression
+#   model = "auto.m4", response = "mpg", exclude = "name"
+#   interaction = displacement:horsepower
+auto.m4 <- lm(mpg ~ . +displacement:horsepower -name, data = auto)
+```
+
+```{r Ex9e3b, indent = "    "}
+# View summary of model fit
+summary(auto.m4)
+```
+    The p-value resulting from the interaction between `displacement` and `cylinders` approximates zero and is statistically significant at the 5% level.
+\
+\
+    __Comparing model fit:__
+\
+    The differences in fit from the interaction terms can be seen across the models:
+    
+```{r Ex9e4, indent = "    "}
+# Combine fit statistics across models
+temp <- rbind(accuracy(auto.m1), accuracy(auto.m2), accuracy(auto.m3), accuracy(auto.m4))
+
+# Assign model names
+rownames(temp) <- c("auto.m1", "auto.m2", "auto.m3", "auto.m4")
+
+# View results, then remove temp
+temp; rm(temp)
+```
+    
+(f) Try a few different transformations of the variables, such as $\log(X),\  \sqrt{X},\ X^2$. Comment on your findings.
+\
+\
+    The scatterplot matrix from Ex9(a) was examined for candidate transformation variables.
+\
+\
+    __Transformation: $\log(displacement)$__
+\
+    A natural log transformation was done on the variable `displacement`:
+    
+```{r Ex9f1a, indent = "    "}
+# Multiple linear regression
+#   model = "auto.m5", response = "mpg", exclude = "name"
+#   transformation = log(displacement)
+auto.m5 <- lm(mpg ~ . +log(displacement) -name , data = auto)
+```
+
+```{r Ex9f1b, indent = "    "}
+# View summary of model fit
+summary(auto.m5)
+```
+
+```{r Ex9f1c, indent = "    "}
+# Use anova to compare full and reduced model
+anova(auto.m1, auto.m5)
+```
+    Under the `anova` test, the null hypothesis is that full and reduced models fit the data equally well, while the alternative hypothesis is that the full model offers better fit. 
+    
+    The `anova` results suggest the full model (which includes the transformed variable) offers better fit. The value of the F-statistic is 72.695. The corresponding p-value approximates zero and is statistically significant at the 5% level. We reject the null hypothesis that the full and reduced models fit the data equally well.
+\
+\
+    __Transformation: $\sqrt{displacement}$__
+\
+    A square root transformation was done on the variable `displacement`:
+    
+```{r Ex9f2a, indent = "    "}
+# Multiple linear regression
+#   model = "auto.m6", response = "mpg", exclude = "name"
+#   transformation = log(displacement)
+auto.m6 <- lm(mpg ~ . +sqrt(displacement) -name , data = auto)
+```
+
+```{r Ex9f2b, indent = "    "}
+# View summary of model fit
+summary(auto.m6)
+```
+
+```{r Ex9f2c, indent = "    "}
+# Use anova to compare full and reduced model
+anova(auto.m1, auto.m6)
+```
+    Under the `anova` test, the null hypothesis is that full and reduced models fit the data equally well, while the alternative hypothesis is that the full model offers better fit. 
+    
+    The `anova` results suggest the full model (which includes the transformed variable) offers better fit. The value of the F-statistic is 78.972. The corresponding p-value approximates zero and is statistically significant at the 5% level. We reject the null hypothesis that the full and reduced models fit the data equally well.
+\
+\
+    __Transformation: $displacement^2$__
+\
+    A polynomial transformation of order two was done on the variable `displacement`:
+    
+```{r Ex9f3a, indent = "    "}
+# Multiple linear regression
+#   model = "auto.m7", response = "mpg", exclude = "name"
+#   transformation = log(displacement)
+auto.m7 <- lm(mpg ~ . +poly(displacement, 2) -name , data = auto)
+```
+
+```{r Ex9f3b, indent = "    "}
+# View summary of model fit
+summary(auto.m7)
+```
+
+```{r Ex9f3c, indent = "    "}
+# Use anova to compare full and reduced model
+anova(auto.m1, auto.m7)
+```
+    Under the `anova` test, the null hypothesis is that full and reduced models fit the data equally well, while the alternative hypothesis is that the full model offers better fit. 
+    
+    The `anova` results suggest the full model (which includes the transformed variable) offers better fit. The value of the F-statistic is 87.328. The corresponding p-value approximates zero and is statistically significant at the 5% level. We reject the null hypothesis that the full and reduced models fit the data equally well.
+\
+\
+    __Comparing model fit:__
+\
+    The differences in fit from the interaction terms can be seen across the models:
+    
+```{r Ex9f4, indent = "    "}
+# Combine fit statistics across models
+temp <- rbind(accuracy(auto.m1), accuracy(auto.m2), accuracy(auto.m3), accuracy(auto.m4), accuracy(auto.m5), accuracy(auto.m6), accuracy(auto.m7))
+
+# Assign model names
+rownames(temp) <- c("auto.m1", "auto.m2", "auto.m3", "auto.m4", "auto.m5",
+                    "auto.m6", "auto.m7")
+
+# View results, then remove temp
+temp; rm(temp)
+```
+
+### Exercise 15:
+
+This problem involves the `Boston` data set, which we saw in the lab for this chapter. We will now try to predict per capita crime rate using the other variables in this data set. In other words, per capita crime rate is the response, and the other variables are the predictors.
+
+```{r Ex15base1, results = "hide"}
+# Load and assign data
+data(Boston); Boston
+
+# View summary statistics
+summary(Boston)
+
+# Examine dimensions (pre-NA removal)
+dim(Boston)
+
+# Assign new data.frame with missing values removed
+Boston <- na.omit(Boston)
+
+# Examine dimensions (post-NA removal)
+dim(Boston)
+```
+
+(a) For each predictor, fit a simple linear regression model to predict the response. Describe your results. In which of the models is there a statistically significant association between the predictor and the response? Create some plots to back up your assertions.
+\
+\
+    The loop below performs simple linear regression of the `crim` variable against each other variable in the `Boston` data set. The numeric value `temp` stores the _F-statistic_ and associated information from the `summary()` function output needed to calculate the _p-value_. The _p-value_ is then calculated. If the _p-value_ is less than the value of $\alpha$ of 0.05, then it is stored in  `data.frame(table)` along with the _variable name_, and the _F-statistic_. This process is then repeated, with `data.frame(table)` being appended for the next set of qualifying values.
+
+```{r Ex15a1, indent = "    "}
+# Create null objects to store results
+slr.pv <- NULL
+slr.coef <- NULL
+
+# Create loop for results
+for(i in names(Boston)){
+    
+    # Fit simple linear regression model against per capita crime
+    slr.summary <- summary(lm(as.formula(paste("crim ~", i,"-crim")), 
+                           data = Boston))
+    
+    #----------------------------------
+    # F-statistic
+    #----------------------------------
+    # Store the F-statistic
+    fstat <- slr.summary$fstatistic
+
+    # Set attributes to NULL
+    attributes(fstat) <- NULL
+    
+    # Skip for NULL class
+    if (class(fstat) == "NULL") next
+    
+    #--------------
+    # p-values
+    #--------------
+    # Compute the p-value of the F-statistic
+    pv <- pf(fstat[1], fstat[2], fstat[3], lower.tail = F)
+    
+    # Set attributes to NULL
+    attributes(pv) <- NULL
+    
+    # Create data.frame of statistically significant results
+    if (pv < 0.05) 
+        slr.pv <- rbind(slr.pv, data.frame(i, round(fstat[1], digits = 4),
+                                           round(pv, digits = 4)))
+    
+    #----------------------------------
+    # Coefficients
+    #----------------------------------
+    # Store coefficients
+    slr.coef <- rbind(slr.coef, 
+                      data.frame(i, round(coef(slr.summary)[-c(1), 1], 
+                                          digits = 4)))
+}
+
+#----------------------------------
+# slr.pv
+#----------------------------------
+# Add column and row names
+colnames(slr.pv) <- c("Variable", "F-statistic", "p-value")
+rownames(slr.pv) <- slr.pv[, 1]
+slr.pv <- slr.pv[, -1]
+
+#----------------------------------
+# slr.coef
+#----------------------------------
+colnames(slr.coef) <- c("Variable", "SLR.Coefficient")
+rownames(slr.coef) <- slr.coef[, 1]
+slr.coef <- slr.coef[, -1, drop = F]
+
+# Print results and clean-up
+slr.pv; rm(i); rm(pv); rm(fstat)
+```
+    
+    Once the _variable name_, _F-statistic_, and _p-value_ of statistically significant variables are stored, plots are created of the qualifying variables for further investigation and assessment.
+    
+```{r include = F}
+par(mfcol = c(2, 2))
+```
+
+```{r Ex15a2, indent = "    ", fig.width = 8, fig.height = 8}
+# Produce diagnostic plots of statistically significant results
+for (i in rownames(slr.pv)){
+    plot(lm(as.formula(paste("crim ~", i)), data = Boston), 
+         main = paste("Variable:", i), ask = F)
+}
+```
+
+```{r include = F}
+par(mfcol = c(1, 1))
+```
+    
+    Many of the plots show signs of non-linearity in the residuals. Put another way, the residuals can be said to be heteroscedastic. This suggests some type of variable transformation is appropriate. Which variable transformation to apply can be guided by the shapes of the residuals in the plots. For example, do the residuals take on a 'U' shape, or a megaphone shape? The residuals should be homoscedastic. The best shape of residuals is no shape at all! This highlights the need for checking both _quantitative_ and _qualitative_ goodness of fit.
+    
+(b) Fit a multiple regression model to predict the response using all of the predictors. Describe your results. For which predictors can we reject the null hypothesis $H_0 : \beta_j = 0$?
+
+```{r Ex15b1, indent = "    "}
+# Create null objects to store results
+mlr.pv <- NULL
+mlr.coef <- NULL
+
+# Fit multiple linear regression model against per capita crime
+mlr.summary <- summary(lm(crim ~ . -crim, data = Boston))
+
+# Print results
+mlr.summary
+
+# Create data.frame of statistically significant results
+for (i in 1:nrow(coef(mlr.summary))){
+    pv <- coef(mlr.summary)[i, 4]
+    tstat <- coef(mlr.summary)[i, 3]
+    if(pv < 0.05)
+        mlr.pv <- rbind(mlr.pv, data.frame(rownames(coef(mlr.summary))[i],
+                                           round(tstat, digits = 4),
+                                           round(pv, digits = 4)))
+}
+
+# Store coefficients
+mlr.coef <- round(as.data.frame(coef(mlr.summary)[-c(1), 1]), digits = 4)
+
+#----------------------------------
+# mlr.pv
+#----------------------------------
+# Add column and row names
+colnames(mlr.pv) <- c("Variable", "t-statistic", "p-value")
+rownames(mlr.pv) <- mlr.pv[, 1]
+mlr.pv <- mlr.pv[-1, -1, drop = F]
+
+#----------------------------------
+# mlr.coef
+#----------------------------------
+colnames(mlr.coef) <- "MLR.Coefficient"
+
+# Print results and clean-up
+mlr.pv; rm(i); rm(pv); rm(tstat)
+```
+    
+    The predictor variables above have a statistically significant p-value. This _suggests_ that we can reject the null hypothesis of $H_0 : \beta_j = 0$ for these; however, this only looks at the _individual_ p-values and false discoveries can occur if `j` is large. A more appropriate route is to conduct _variable selection_, adding qualified variable to the model one at a time.
+    
+(c) How do your results from (a) compare to your results from (b)? Create a plot displaying the univariate regression coefficients from (a) on the _x_-axis, and the multiple regression coefficients from (b) on the _y_-axis. That is, each predictor is displayed as a single point in the plot. Its coefficient in a simple linear regression model is shown on the _x_-axis, and its coefficient estimate in the multiple linear regression model is shown on the _y_-axis.
+
+```{r Ex15c1, indent = "    "}
+# Merge coefficients from each model
+coefs <- data.frame(slr.coef, mlr.coef)
+
+# Plot
+plot(coefs, main = "Coefficients from SLR and MLR Models",
+     pch = 21, bg = "grey")
+```
+    
+    In both the SLR (simple linear regression) and MLR (multiple linear regression) models, the variable `nox` has a much larger coefficient relative to the other variables.
+    
+    The variable `nox` is the nitrogen oxides concentration (parts per 10 million). The coefficient for `nox` suggests that for a one unit increase in `nox`, we expect a ~31 unit _increase_ in `crim` in the SLR model and a ~10 unit _decease_ in `crim` in the MLR model.
+    
+(d) Is there evidence of non-linear association between any of the predictors and the response? To answer this question, for each predictor X, fit a model of the form
+
+$$Y = \beta_0 + \beta_1X + \beta_2X^2 + \beta_3X^3 + \epsilon$$
+\
+\
+    The code below does not use the `poly()` function as that results in an error with the categorical variable `chas`. `R` does not give an error when using `chas` with the `I()` function.
+    
+    Interestingly, if `chas` is converted to a factor (categorical) variable, `R` will not execute the `lm()` function using _either_ the `poly()` function or the function `I()`.
+    
+```{r include = F}
+par(mfcol = c(2, 2))
+```
+
+```{r Ex15d1, indent = "    ", fig.width = 8, fig.height = 8}
+# Create loop for results
+for(i in names(Boston)[2:14]){
+   plot(lm(as.formula(paste("crim ~", i, "+I(", i, "^2)", "+I(", i, "^3)")),
+           data = Boston), main = paste("Variable:", i), ask = F)
+}
+```
+
+```{r include = F}
+par(mfcol = c(1, 1))
+```
+    
+    The resulting plots suggest that polynomial transformations may be appropriate for some of the variables. Compared to the earlier plots, the residuals appear slightly more homoscedastic, but many still have detectable shapes or patterns instead of no pattern at all (random).
+    
+## Validation Set Approach
+
+In Exercise 1 (Section 3.7 #9), we fit linear regression models to the `Auto` data set to predict `mpg`. We will now estimate the test error of one such model using the validation set approach. Do not forget to set a random seed before beginning your analysis.
+
+(a) Fit a linear regression model that uses `weight` and `year` to predict `mpg`. Using the validation set approach, estimate the test error of this model. In order to do this, you must perform the following steps:
+    
+    i. Split the sample set into a training set and a validation set.
+    
+```{r VSa1, indent = "        "}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 50/50
+train <- sample_frac(auto, 0.50)
+```
+    
+    ii. Fit a linear regression model using only the training observations.
+    
+```{r VSa2, indent = "        "}
+# Assign row names of train
+train.rn <- as.numeric(rownames(train))
+
+# Fit linear regression model
+auto.m8 <- lm(mpg ~ weight + year, data = auto, subset = train.rn)
+
+# Print training values
+round(auto.m8$fitted.values, digits = 2)
+```
+    
+    iii. Predict `mpg` for each of the validation observations.
+    
+```{r VSa3, indent = "        "}
+# Print predicted values for test data
+round(predict(auto.m8, auto)[-train.rn], digits = 2)
+```
+    
+    iv. Compute the MSE for the validation set.
+    
+```{r VSa4, indent = "        "}
+# MSE
+auto.m8.mse <- mean((auto$mpg - predict(auto.m8, auto))[-train.rn]^2)
+auto.m8.mse
+```
+
+(b) Repeat the process in part a three times, using three different splits of the observations into a training set and a validation set. Comment on the results obtained.
+\
+\
+    __60/40 Split__
+    
+```{r VSb1, indent = "    "}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 60/40
+train <- sample_frac(auto, 0.60)
+
+# Assign row names of train
+train.rn <- as.numeric(rownames(train))
+
+# Fit linear regression model
+auto.m9 <- lm(mpg ~ weight + year, data = auto, subset = train.rn)
+
+# Print training values
+round(auto.m9$fitted.values, digits = 2)
+
+# Print predicted values for test data
+round(predict(auto.m9, auto)[-train.rn], digits = 2)
+
+# MSE
+auto.m9.mse <- mean((auto$mpg - predict(auto.m9, auto))[-train.rn]^2)
+auto.m9.mse
+```
+\
+\
+    __70/30 Split__
+    
+```{r VSb2, indent = "    "}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 70/30
+train <- sample_frac(auto, 0.70)
+
+# Assign row names of train
+train.rn <- as.numeric(rownames(train))
+
+# Fit linear regression model
+auto.m10 <- lm(mpg ~ weight + year, data = auto, subset = train.rn)
+
+# Print training values
+round(auto.m10$fitted.values, digits = 2)
+
+# Print predicted values for test data
+round(predict(auto.m10, auto)[-train.rn], digits = 2)
+
+# MSE
+auto.m10.mse <- mean((auto$mpg - predict(auto.m10, auto))[-train.rn]^2)
+auto.m10.mse
+```
+\
+\
+    __80/20 Split__
+    
+```{r VSb3, indent = "    "}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 80/20
+train <- sample_frac(auto, 0.80)
+
+# Assign row names of train
+train.rn <- as.numeric(rownames(train))
+
+# Fit linear regression model
+auto.m11 <- lm(mpg ~ weight + year, data = auto, subset = train.rn)
+
+# Print training values
+round(auto.m11$fitted.values, digits = 2)
+
+# Print predicted values for test data
+round(predict(auto.m11, auto)[-train.rn], digits = 2)
+
+# MSE
+auto.m11.mse <- mean((auto$mpg - predict(auto.m11, auto))[-train.rn]^2)
+auto.m11.mse
+```
+\
+\
+    __MSE Comparison:__
+
+```{r VSb4, indent = "    "}
+# Table MSE values for comparison
+mse.vals <- round(rbind(auto.m8.mse, auto.m9.mse, auto.m10.mse, auto.m11.mse),
+                  digits = 4)
+mse.split <- c("50/50", "60/40", "70/30", "80/20")
+mse.comp <- data.frame(mse.vals, mse.split)
+colnames(mse.comp) <- c("MSE", "Split")
+mse.comp
+```
+    
+    __Comments on results:__ The MSE improves as the size of the training set increases. However, we should be mindful of not overfitting the model, even with the training-test split.
+    
+(c) Now consider a linear regression model that predicts mpg using `weight`, `year`, and the interaction term `weight`×`year`. Estimate the test error for this model using the validation set approach. Comment on whether or not including the interaction term leads to a reduction in the test error.
+
+```{r VSc1, indent = "    "}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 80/20
+train <- sample_frac(auto, 0.80)
+
+# Assign row names of train
+train.rn <- as.numeric(rownames(train))
+
+# Fit linear regression model
+auto.m12 <- lm(mpg ~ weight*year, data = auto, subset = train.rn)
+
+# Print training values
+round(auto.m12$fitted.values, digits = 2)
+
+# Print predicted values for test data
+round(predict(auto.m12, auto)[-train.rn], digits = 2)
+
+# MSE
+auto.m12.mse <- mean((auto$mpg - predict(auto.m12, auto))[-train.rn]^2)
+auto.m12.mse
+```
+    
+    __Comments on results:__ Including the interaction term in model `auto.m12` did lead to a reduction in the MSE vs. model `auto.m11`. Both models used an 80/20 training-test split.
+    
+## _k_-Fold Cross-Validation
+
+For this exercise, we will use k-fold cross-validation to compare the performance of models that predict `mpg` from the `Auto` data set. Use the following model definitions for this exercise. 
+
+* __Model A__: A simple linear regression model with your choice of predictor
+* __Model B__: The multiple linear regression model from Section 3.7 #9.c
+* __Model C__: A multiple linear regression model with no more than five predictors (you choose the predictors)
+
+(a) Fit models A, B, and C to the entire training data set. Compute the training error for each model.
+\
+\
+    _Note: a 70/30 training-test split is used throughout this section_
+\
+\
+    __Model A__
+
+```{r KFa1, indent = "    "}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 70/30
+train <- sample_frac(auto, 0.70)
+
+# Assign row names of train
+train.rn <- as.numeric(rownames(train))
+
+# Fit simple linear regression model
+auto.m13 <- lm(mpg ~ displacement, data = auto, subset = train.rn)
+
+# Print training values
+round(auto.m13$fitted.values, digits = 2)
+
+# MSE
+auto.m13.mse <- mean((auto$mpg - predict(auto.m13, auto))^2)
+auto.m13.mse
+```
+\
+\
+    __Model B__
+
+```{r KFa2, indent = "    "}
+# Remove name from auto data set
+auto.nn <- subset(auto, select = -c(name))
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 70/30
+train <- sample_frac(auto.nn, 0.70)
+
+# Assign row names of train
+train.rn <- as.numeric(rownames(train))
+
+# Fit multiple linear regression model
+auto.m14 <- lm(mpg ~ ., data = auto.nn, subset = train.rn)
+
+# Print training values
+round(auto.m14$fitted.values, digits = 2)
+
+# MSE
+auto.m14.mse <- mean((auto$mpg - predict(auto.m14, auto.nn))^2)
+auto.m14.mse
+```
+\
+\
+    __Model C__
+
+```{r KFa3, indent = "    "}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 70/30
+train <- sample_frac(auto, 0.70)
+
+# Assign row names of train
+train.rn <- as.numeric(rownames(train))
+
+# Fit multiple linear regression model
+auto.m15 <- lm(mpg ~ cylinders + displacement + horsepower + weight + year,
+               data = auto, subset = train.rn)
+
+# Print training values
+round(auto.m15$fitted.values, digits = 2)
+
+# MSE
+auto.m15.mse <- mean((auto$mpg - predict(auto.m15, auto))^2)
+auto.m15.mse
+```
+
+
+(b) Use _k_-fold cross-validation with _k_ = 5 to estimate the test error of models A, B, and C. In order to do this, you must perform the following steps:
+    
+    i. Fit each model using the `glm()` function with the parameter setting `family = gaussian`. This will result in OLS models equivalent to those obtained with the `lm()` function.
+\
+\
+    __Model A__
+
+```{r KFbi1, indent = "        "}
+# Fit simple linear regression model
+auto.m16 <- glm(mpg ~ displacement, data = auto, family = gaussian)
+```
+\
+\
+    __Model B__
+
+```{r KFbi2, indent = "        "}
+# Remove name from auto data set
+auto.nn <- subset(auto, select = -c(name))
+
+# Fit multiple linear regression model
+auto.m17 <- glm(mpg ~ ., data = auto.nn, family = gaussian)
+```
+\
+\
+    __Model C__
+
+```{r KFbi3, indent = "        "}
+# Fit multiple linear regression model
+auto.m18 <- glm(mpg ~ cylinders + displacement + horsepower + weight + year,
+                data = auto, family = gaussian)
+```
+    
+    ii. Use the `cv.glm()` function to estimate the test error of each model.
+\
+\
+    __Model A__
+
+```{r KFbii1, indent = "        "}
+# Set seed for reproducibility
+set.seed(123)
+
+# MSE
+auto.m16.mse <- cv.glm(auto, auto.m16, K = 5)$delta[1]
+auto.m16.mse
+```
+\
+\
+    __Model B__
+
+```{r KFbii2, indent = "        "}
+# Set seed for reproducibility
+set.seed(123)
+
+# MSE
+auto.m17.mse <- cv.glm(auto.nn, auto.m17, K = 5)$delta[1]
+auto.m17.mse
+```
+\
+\
+    __Model C__
+
+```{r KFbii3, indent = "        "}
+# Set seed for reproducibility
+set.seed(123)
+
+# MSE
+auto.m18.mse <- cv.glm(auto, auto.m18, K = 5)$delta[1]
+auto.m18.mse
+```
+
+(c) Repeat part b with _k_ = 10.
+\
+\
+    __Model A__
+
+```{r KFc1, indent = "        "}
+# Set seed for reproducibility
+set.seed(123)
+
+# MSE
+auto.m19.mse <- cv.glm(auto, auto.m16, K = 10)$delta[1]
+auto.m19.mse
+```
+\
+\
+    __Model B__
+
+```{r KFc2, indent = "        "}
+# Set seed for reproducibility
+set.seed(123)
+
+# MSE
+auto.m20.mse <- cv.glm(auto.nn, auto.m17, K = 10)$delta[1]
+auto.m20.mse
+```
+\
+\
+    __Model C__
+
+```{r KFc3, indent = "        "}
+# Set seed for reproducibility
+set.seed(123)
+
+# MSE
+auto.m21.mse <- cv.glm(auto, auto.m18, K = 10)$delta[1]
+auto.m21.mse
+```
+
+(d) Tabulate the errors for each model from parts a through c. Which model performs best on the training data? Which model do you expect to perform best on the test data? Which model would you recommend to be used to make predictions on the new data?
+\
+\
+    __MSE Comparison:__
+
+```{r KFd1, indent = "    "}
+# Table MSE values for comparison
+mse.vals <- round(rbind(auto.m13.mse, auto.m14.mse, auto.m15.mse, 
+                        auto.m16.mse, auto.m17.mse, auto.m18.mse,
+                        auto.m19.mse, auto.m20.mse, auto.m21.mse),
+                  digits = 4)
+mse.split <- c(rep("70/30", 3), rep("K = 5", 3), rep("K = 10", 3))
+mse.type <- rep(c("SLR", "MLR", "MLR"), 3)
+mse.vars <- rep(c(1, 7, 5), 3)
+mse.comp <- data.frame(mse.vals, mse.split, mse.type, mse.vars)
+colnames(mse.comp) <- c("MSE", "Split", "Type", "# Variables")
+mse.comp
+```
+    
+    __Comments on results:__ 
+    \ 
+    Based on the error measure alone, the model that appeared to perform best on the training data was the 70/30 model with all predictors (seven due to the removal of the factor variable `name`).
+    \ 
+    Based on the error measure alone, the model that appeared to perform best on the test data was the 10 k-fold cross-validation model with all predictors (seven due to the removal of the factor variable `name`).
+    \ 
+    At first glance, it seems the 10 k-fold cross-validation model with all predictors (seven due to the removal of the factor variable `name`) is the best to make predictions on. However, MSE is just one measure of error. Further investigation should be done to determine the presence of multicollinearity by examining the VIFs.
+    
+```{r FIN, eval = F}
+# FIN
+```
