@@ -26,8 +26,6 @@ library(knitr)
 library(MASS)
 library(RCurl)
 
-# Session info
-sessionInfo()
 ```
 
 ```{r setup.knitr, include = F}
@@ -1067,4 +1065,7 @@ mse.comp
     
 ```{r FIN, eval = F}
 # FIN
+
+# Session info
+sessionInfo()
 ```
