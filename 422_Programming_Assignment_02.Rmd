@@ -25,6 +25,9 @@ library(forecast)
 library(knitr)
 library(MASS)
 library(RCurl)
+
+# Session info
+sessionInfo()
 ```
 
 ```{r setup.knitr, include = F}
@@ -45,11 +48,12 @@ knitr::opts_knit$set(global.par = T)
 # fit()
 #--------------------------------------
 # Function to add MSE to other measures from forecast::accuracy
-fit <- function(data){
-    temp <- data.frame(forecast::accuracy(data), 
-                       forecast::accuracy(data)[, 2]^2)
-    colnames(temp)[7] <- "MSE"
-    temp <- temp[c(1, 7, 2, 3, 4, 5, 6)]
+fit <- function(f, x){
+    temp <- data.frame(forecast::accuracy(f, x), 
+                       forecast::accuracy(f, x)[, 2]^2)
+    temp <- temp[, -c(1)]
+    colnames(temp)[6] <- "MSE"
+    temp <- temp[c(6, 1, 2, 3, 4, 5)]
     print(temp)
 }
 ```
@@ -97,6 +101,11 @@ pairs(auto, main = "Scatterplot Matrix: Variables of 'Auto.csv'")
     
 (b) Compute the matrix of correlations between the variables using the function `cor()`. You will need to exclude the `name` variable, which is qualitative.
     
+```{r include = F}
+# Store par.old (known issue w/ corrplot())
+par.old <- par()
+```
+    
 ```{r Ex9b1, indent = "    "}
 # Examine correlation between variables
 round(cor(auto[, !sapply(auto, is.factor)]), digits = 4)
@@ -104,6 +113,11 @@ round(cor(auto[, !sapply(auto, is.factor)]), digits = 4)
 # Produce plot of correlation between variables
 corrplot(cor(auto[, !sapply(auto, is.factor)]), 
          tl.col = "black", tl.cex = 0.8, tl.srt = 45)
+```
+    
+```{r include = F}
+# Restore par() settings
+par(par.old)
 ```
     
 (c) Use the `lm()` function to perform a multiple linear regression with `mpg` as the response and all other variables except `name` as the predictors. Use the `summary()` function to print the results. 
@@ -119,7 +133,7 @@ auto.m1 <- lm(mpg ~ . -name, data = auto)
 summary(auto.m1)
 
 # View accuracy of model fit
-accuracy(auto.m1)
+fit(auto.m1)
 ```
     
     Comment on the output. For instance:
@@ -276,16 +290,17 @@ summary(auto.m4)
     \
     The differences in fit from the interaction terms can be seen across the models:
     
-```{r Ex9e4, indent = "    "}
+```{r Ex9e4a, indent = "    ", results = "hide"}
 # Combine fit statistics across models
-temp <- rbind(accuracy(auto.m1), accuracy(auto.m2), accuracy(auto.m3),
-              accuracy(auto.m4))
+temp <- rbind(fit(auto.m1), fit(auto.m2), fit(auto.m3), fit(auto.m4))
 
 # Assign model names
 rownames(temp) <- c("auto.m1", "auto.m2", "auto.m3", "auto.m4")
-
+```
+    
+```{r Ex9e4b, indent = "    "}
 # View results, then remove temp
-temp; rm(temp)
+round(temp, digits = 6); rm(temp)
 ```
     
 (f) Try a few different transformations of the variables, such as $\log(X),\  \sqrt{X},\ X^2$. Comment on your findings.
@@ -381,18 +396,19 @@ anova(auto.m1, auto.m7)
     \
     The differences in fit from the interaction terms can be seen across the models:
     
-```{r Ex9f4, indent = "    "}
+```{r Ex9f4a, indent = "    ", results = "hide"}
 # Combine fit statistics across models
-temp <- rbind(accuracy(auto.m1), accuracy(auto.m2), accuracy(auto.m3),
-              accuracy(auto.m4), accuracy(auto.m5), accuracy(auto.m6),
-              accuracy(auto.m7))
+temp <- rbind(fit(auto.m1), fit(auto.m2), fit(auto.m3), fit(auto.m4),
+              fit(auto.m5), fit(auto.m6), fit(auto.m7))
 
 # Assign model names
 rownames(temp) <- c("auto.m1", "auto.m2", "auto.m3", "auto.m4", "auto.m5",
                     "auto.m6", "auto.m7")
-
+```
+    
+```{r Ex9f4b, indent = "    "}
 # View results, then remove temp
-temp; rm(temp)
+round(temp, digits = 6); rm(temp)
 ```
     
 ### Exercise 15:
@@ -420,7 +436,7 @@ dim(Boston)
     
     \ 
     
-    The loop below performs simple linear regression of the `crim` variable against each other variable in the `Boston` data set. The numeric value `temp` stores the _F-statistic_ and associated information from the `summary()` function output needed to calculate the _p-value_. The _p-value_ is then calculated. If the _p-value_ is less than the value of $\alpha$ of 0.05, then it is stored in  `data.frame(table)` along with the _variable name_, and the _F-statistic_. This process is then repeated, with `data.frame(table)` being appended for the next set of qualifying values.
+    The loop below performs simple linear regression of the `crim` variable against each other variable in the `Boston` data set. The numeric value `temp` stores the _F-statistic_ and associated information from the `summary()` function output needed to calculate the _p-value_. The _p-value_ is then calculated. If the _p-value_ is less than the value of $\alpha$ of 0.05, then it is stored in `data.frame(slr.pv)` along with the _variable name_, and the _F-statistic_. This process is then repeated, with `data.frame(slr.pv)` being appended for the next set of qualifying values. The coefficients are similarly stored in `data.frame(slr.coef)`.
     
 ```{r Ex15a1, indent = "    "}
 # Create null objects to store results
@@ -498,7 +514,7 @@ par(mfcol = c(2, 2))
 # Produce diagnostic plots of statistically significant results
 for (i in rownames(slr.pv)){
     plot(lm(as.formula(paste("crim ~", i)), data = Boston),
-             main = paste("Variable:", i), ask = F)
+         main = paste("Variable:", i), ask = F)
     cat("\n\n")
 }
 ```
@@ -507,7 +523,7 @@ for (i in rownames(slr.pv)){
 par(mfcol = c(1, 1))
 ```
     
-    Many of the plots show signs of non-linearity in the residuals. Put another way, the residuals can be said to be heteroscedastic. This suggests some type of variable transformation is appropriate. Which variable transformation to apply can be guided by the shapes of the residuals in the plots. For example, do the residuals take on a 'U' shape, or a megaphone shape? The residuals should be homoscedastic. The best shape of residuals is no shape at all! This highlights the need for checking both _quantitative_ and _qualitative_ goodness of fit.
+    Many of the plots show signs of non-linearity in the residuals. Put another way, the residuals can be said to be heteroscedastic. This suggests some type of variable transformation is appropriate. Which variable transformation to apply can be guided by the shapes of the residuals in the plots. For example, do the residuals take on a 'bow' shape, or a 'megaphone' shape? The residuals should be homoscedastic. The best shape of residuals is no shape at all! This highlights the need for checking both _quantitative_ and _qualitative_ goodness of fit.
     
     \ 
     
@@ -645,9 +661,9 @@ round(predict(auto.m8, auto)[-auto.train.rn], digits = 2)
     iv. Compute the MSE for the validation set.
     
 ```{r VSa4, indent = "        "}
-# MSE
-auto.m8.mse <- mean((auto$mpg - predict(auto.m8, auto))[-auto.train.rn]^2)
-auto.m8.mse
+# Fit
+auto.m8.fit <- fit(forecast(auto.m8, newdata = auto[-auto.train.rn, ]),
+                   auto$mpg[-auto.train.rn])
 ```
     
 (b) Repeat the process in part a three times, using three different splits of the observations into a training set and a validation set. Comment on the results obtained.
@@ -675,9 +691,9 @@ round(auto.m9$fitted.values, digits = 2)
 # Print predicted values for test data
 round(predict(auto.m9, auto)[-auto.train.rn], digits = 2)
 
-# MSE
-auto.m9.mse <- mean((auto$mpg - predict(auto.m9, auto))[-auto.train.rn]^2)
-auto.m9.mse
+# Fit
+auto.m9.fit <- fit(forecast(auto.m9, newdata = auto[-auto.train.rn, ]),
+                   auto$mpg[-auto.train.rn])
 ```
     
     \ 
@@ -703,9 +719,9 @@ round(auto.m10$fitted.values, digits = 2)
 # Print predicted values for test data
 round(predict(auto.m10, auto)[-auto.train.rn], digits = 2)
 
-# MSE
-auto.m10.mse <- mean((auto$mpg - predict(auto.m10, auto))[-auto.train.rn]^2)
-auto.m10.mse
+# Fit
+auto.m10.fit <- fit(forecast(auto.m10, newdata = auto[-auto.train.rn, ]),
+                    auto$mpg[-auto.train.rn])
 ```
     
     \ 
@@ -731,30 +747,39 @@ round(auto.m11$fitted.values, digits = 2)
 # Print predicted values for test data
 round(predict(auto.m11, auto)[-auto.train.rn], digits = 2)
 
-# MSE
-auto.m11.mse <- mean((auto$mpg - predict(auto.m11, auto))[-auto.train.rn]^2)
-auto.m11.mse
+# Fit
+auto.m11.fit <- fit(forecast(auto.m11, newdata = auto[-auto.train.rn, ]),
+                    auto$mpg[-auto.train.rn])
 ```
     
     \ 
     
-    __MSE Comparison:__
+    __Fit Comparison:__
     
 ```{r VSb4, indent = "    "}
-# Table MSE values for comparison
-mse.vals <- round(rbind(auto.m8.mse, auto.m9.mse, auto.m10.mse, auto.m11.mse),
+# Table fit values for comparison
+fit.name <- rep(c("auto.m8", "auto.m9", "auto.m10", "auto.m11"), each = 2)
+fit.type <- rep(c("Training", "Test"), times = 4)
+fit.vals <- round(rbind(auto.m8.fit, auto.m9.fit, auto.m10.fit, auto.m11.fit),
                   digits = 4)
-mse.split <- c("50/50", "60/40", "70/30", "80/20")
-mse.comp <- data.frame(mse.vals, mse.split)
-colnames(mse.comp) <- c("MSE", "Split")
-mse.comp
+fit.split <- rep(c("50/50", "60/40", "70/30", "80/20"), each = 2)
+fit.comp <- data.frame(fit.name, fit.type, fit.split, fit.vals)
+
+# Add row and column names
+rownames(fit.comp) <- rep(1:nrow(fit.comp))
+colnames(fit.comp)[1] <- "Model"
+colnames(fit.comp)[2] <- "Type"
+colnames(fit.comp)[3] <- "Split"
+
+# View fit values
+fit.comp
 ```
     
-    __Comments on results:__ The MSE improves as the size of the training set increases. However, we should be mindful of not overfitting the model, even with the training-test split.
+    __Comments on results:__ The MSE in test data improves as the size of the training set increases. However, we should be mindful of not overfitting the model, even with the training-test split. Additionally, the MSE can vary (sometimes significantly) between runs using different values of `set.seed()`.
     
     \ 
     
-(c) Now consider a linear regression model that predicts mpg using `weight`, `year`, and the interaction term `weight`×`year`. Estimate the test error for this model using the validation set approach. Comment on whether or not including the interaction term leads to a reduction in the test error.
+(c) Now consider a linear regression model that predicts mpg using `weight`, `year`, and the interaction term `weight`?`year`. Estimate the test error for this model using the validation set approach. Comment on whether or not including the interaction term leads to a reduction in the test error.
     
 ```{r VSc1, indent = "    "}
 # Set seed for reproducibility
@@ -775,8 +800,12 @@ round(auto.m12$fitted.values, digits = 2)
 # Print predicted values for test data
 round(predict(auto.m12, auto)[-auto.train.rn], digits = 2)
 
-# MSE
-auto.m12.mse <- mean((auto$mpg - predict(auto.m12, auto))[-auto.train.rn]^2)
+# Fit
+auto.m12.fit <- fit(forecast(auto.m12, newdata = auto[-auto.train.rn, ]),
+                    auto$mpg[-auto.train.rn])
+
+# MSE, test error
+auto.m12.mse <- auto.m12.fit[2, 1]
 auto.m12.mse
 ```
     
@@ -816,8 +845,12 @@ auto.m13 <- lm(mpg ~ displacement, data = auto, subset = auto.train.rn)
 # Print training values
 round(auto.m13$fitted.values, digits = 2)
 
-# MSE
-auto.m13.mse <- mean((auto$mpg - predict(auto.m13, auto))^2)
+# Fit
+auto.m13.fit <- fit(forecast(auto.m13, newdata = auto[-auto.train.rn, ]),
+                    auto$mpg[-auto.train.rn])
+
+# MSE, training error
+auto.m13.mse <- auto.m13.fit[1, 1]
 auto.m13.mse
 ```
     
@@ -844,8 +877,12 @@ auto.m14 <- lm(mpg ~ ., data = auto.nn, subset = auto.train.rn)
 # Print training values
 round(auto.m14$fitted.values, digits = 2)
 
-# MSE
-auto.m14.mse <- mean((auto$mpg - predict(auto.m14, auto.nn))^2)
+# Fit
+auto.m14.fit <- fit(forecast(auto.m14, newdata = auto.nn[-auto.train.rn, ]),
+                    auto.nn$mpg[-auto.train.rn])
+
+# MSE, training error
+auto.m14.mse <- auto.m14.fit[1, 1]
 auto.m14.mse
 ```
     
@@ -870,8 +907,12 @@ auto.m15 <- lm(mpg ~ cylinders + displacement + horsepower + weight + year,
 # Print training values
 round(auto.m15$fitted.values, digits = 2)
 
-# MSE
-auto.m15.mse <- mean((auto$mpg - predict(auto.m15, auto))^2)
+# Fit
+auto.m15.fit <- fit(forecast(auto.m15, newdata = auto[-auto.train.rn, ]),
+                    auto$mpg[-auto.train.rn])
+
+# MSE, training error
+auto.m15.mse <- auto.m15.fit[1, 1]
 auto.m15.mse
 ```
     
