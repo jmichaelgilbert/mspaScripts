@@ -822,7 +822,7 @@ auto.qda.m1.test.pi
     
     __Comments__: The _Incorrect_ value corresponds to the error in the model. For `auto.qda.m1`, the train error is 7.86%, while the test error is 8.04%. Compared to the `train` model (`auto.qda.m1.train`), the `test` model (`auto.qda.m1.test`) had a lower _True Positive_ rate and lower _False Positive_ rate; the difference between the _Correct_ rate and _Incorrect_ rate is minor and overfitting is not a major concern.
     
-```{rEx11e2, indent = "    "}
+```{r Ex11e2, indent = "    "}
 #------------------------------------------------------------------------------
 # Train - Test Compare
 #------------------------------------------------------------------------------
@@ -1277,6 +1277,8 @@ colnames(auto.knn.m3.comp)[3:4] <- c("Correct", "Incorrect")
     \ 
     
     __Comments__: Using the same `seed.value` of `123` and the same predictor variables, the $K$ value of 10 in `auto.knn.m3.test` performed best across the board, except for the _False Positive_ rate, which it tied with `auto.knn.m2.test`. 
+    
+    \ 
     
     Interestingly, some values of $K$ produced the same results. For example, $K = 4$, $K = 7$, and $K = 9$ all produced the same _True Positive_, _False Positive_, _Correct_, and _Incorrect_ rates. At first, it appeared this was an error, but after checking the code and using the same code with different values of $K$, the results changed (that is, using new values of $K$ did not produce identical results).
     
