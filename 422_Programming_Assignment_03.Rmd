@@ -1,0 +1,2425 @@
+---
+title: '422-57: Programming Assignment 03'
+author: 'Michael Gilbert'
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_width: 5.75
+    fig_height: 4.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+Workspace cleanup and prep:
+
+```{r setup.R, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(boot)
+library(class)
+library(corrplot)
+library(dplyr)
+library(forecast)
+library(knitr)
+library(MASS)
+library(pROC)
+library(RCurl)
+library(tidyr)
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+```{r TODO1, include = F, eval = F}
+# Create missing flag factor variable for mean, median, mode impute
+# Create mean, median, mode versions of each numeric variables
+# Create levels of numeric variables at 01, 05, 10, 25, 75, 90, 95, 99
+# Create transforms of all numeric variables
+```
+
+```{r Functions}
+# Functions
+
+#--------------------------------------
+# catmerge()
+#--------------------------------------
+# Function to create dummy variables from factor variables
+catmerge <- function(data, list){
+    for (var in list){
+        for (level in unique(data[, var])){
+            data[paste(var, level, sep = "_")] <- 
+                ifelse(data[, var] == level, 1, 0)
+        }
+    }
+    return(data)
+}
+
+#--------------------------------------
+# fac.barplot()
+#--------------------------------------
+# Function to create barplots of factor variables
+fac.barplot <- function(data, list){
+    for (var in list){
+        plot(data[, var], 
+             main = paste("Variable: ", data.name, var, sep = ""),
+             ylim = c(0, 1.1*max(summary(data[, var]))),
+             ylab = "Frequency")
+    }
+}
+
+#--------------------------------------
+# fac.freq()
+#--------------------------------------
+# Function to display frequencies of factor variables
+fac.freq <- function(data, list){
+    for (var in list){
+        temp <- as.data.frame(summary(data[, var]))
+        names(temp)[1] <- paste(data.name, var, sep = "")
+        print(temp)
+    }
+}
+
+#--------------------------------------
+# num.boxplot()
+#--------------------------------------
+# Function to create boxplots of numeric variables
+num.boxplot <- function(data, list, vs = F){
+    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    for (var in list){
+        if (vs){
+            boxplot(data[, var] ~ temp, col = "grey",
+                    main = paste(data.name, var," versus ",
+                                 data.name, data.response, sep = ""))
+        }
+        if (!vs){
+            boxplot(data[, var], col = "grey",
+                    main = paste("Boxplot of ", data.name, var, sep = ""))
+        }
+    }
+}
+
+#--------------------------------------
+# num.hist()
+#--------------------------------------
+# Function to create histograms of numeric variables
+# Optional choice of normal curve overlay
+num.hist <- function(data, list, norm = F){
+    for (var in list){
+        main <- paste("Histogram of ", data.name, var, sep = "")
+        sub <- ifelse(norm, "normal curve overlay (blue)", "")
+        y <- hist(data[, var], plot = F)
+        h <- hist(data[, var], col = "grey", main = main, sub = sub,
+                  ylim = c(0, 1.1*max(y$counts)),
+                  xlab = paste(data.name, var, sep = ""))
+        if (norm){
+            xfit <- seq(min(data[, var]), max(data[, var]), length = 100)
+            yfit <- dnorm(xfit, mean = mean(data[, var]), sd = sd(data[, var]))
+            yfit <- yfit * diff(h$mids[1:2]) * length(data[, var])
+            lines(xfit, yfit, col = "blue", lwd = 2)
+        }
+    }
+}
+
+#--------------------------------------
+# num.qq()
+#--------------------------------------
+# Function to create Q-Q plots of numeric variables
+num.qq <- function(data, list){
+    for (var in list){
+        qqnorm(data[, var], pch = 21, bg = "grey",
+               main = paste("Normal Q-Q Plot of ", data.name, var, sep = ""))
+        qqline(data[, var], lwd = 2, col = "blue")
+    }
+}
+
+#--------------------------------------
+# num.scatter()
+#--------------------------------------
+# Function to create scatterplots of numeric variables
+num.scatter <- function(data, list){
+    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    for (var in list){
+        plot(data[, var], temp, pch = 21, bg = "grey",
+             main = paste(data.name, data.response," versus ", 
+                          data.name, var, sep = ""),
+             ylab = paste(data.name, data.response, sep = ""),
+             xlab = paste(data.name, var, sep = ""))
+    }
+}
+
+#--------------------------------------
+# num.plots()
+#--------------------------------------
+# Function to produce four plots per variable:
+#   Scatterplot, Q-Q Plot, Histogram, Boxplot
+num.plots <- function(data, list, norm = F, vs = F){
+    par(mfcol = c(2, 2))
+    for (var in list){
+        num.hist(data, var, norm)
+        num.scatter(data, var)
+        num.boxplot(data, var, vs)
+        num.qq(data, var)
+    }
+    par(mfcol = c(1, 1))
+}
+
+#--------------------------------------
+# fit()
+#--------------------------------------
+# Function to add MSE to other measures from forecast::accuracy
+fit <- function(f, x){
+    temp <- data.frame(forecast::accuracy(f, x), 
+                       forecast::accuracy(f, x)[, 2]^2)
+    temp <- temp[, -c(1)]
+    colnames(temp)[6] <- "MSE"
+    temp <- temp[c(6, 1, 2, 3, 4, 5)]
+    print(temp)
+}
+```
+
+## ISLR, Section 4.7
+### Exercise 11
+
+\ 
+
+In this problem, you will develop a model to predict whether a given car gets high or low gas mileage based on the `Auto` data set.
+
+Data were downloaded and prepped for analysis. The following order of operations was done:
+
+* If data do not exist in working directory, download
+* Identify `NA` values or characters functioning as `NA` values
+* Remove tuples with `NA` values from data set (no imputing done)
+* Identify variables that are stored as numeric variables and could or should be factor variables (and vice-versa)
+* Create numeric and/or factor versions of these variables and merge to the data set
+* Store row names of variables for later use in training-test split(s)
+* Store column names of all variables
+* Store column names of numeric variables for later use in plotting, trimming, and transforming
+* Store column names of categorical variables for later use in determining frequency, levels, and creating dummy variables
+
+\ 
+
+```{r Ex11base1}
+# Download and assign data
+if(!file.exists("~/Auto.csv")){
+    URL <- getURL("http://www-bcf.usc.edu/~gareth/ISL/Auto.csv")
+    auto <- read.csv(textConnection(URL), header = T)
+    rm(URL)
+}
+```
+
+```{r Ex11base2}
+# Data prep
+
+#--------------------------------------
+# NA values
+#--------------------------------------
+# Treat "?" as NA
+auto[auto == "?"] <- NA
+
+# Assign data.frame with missing values removed
+auto <- na.omit(auto)
+
+#--------------------------------------
+# auto$horsepower
+#--------------------------------------
+# Convert 'horsepower' to numeric
+# Note: when converting factors to numeric, first convert to character;
+#   this preserves any decimals present in data
+auto$horsepower <- as.numeric(as.character(auto$horsepower))
+
+#--------------------------------------
+# auto$origin
+#--------------------------------------
+# Create factor version of 'origin' and merge
+origin.fac <- as.factor(auto$origin)
+auto <- data.frame(auto, origin.fac)
+rm(origin.fac)
+
+# Rename integer version of 'origin'
+auto$origin.int <- auto$origin
+
+# Drop old version of 'origin'
+auto <- subset(auto, select = -origin)
+
+#--------------------------------------
+# auto$cylinder
+#--------------------------------------
+# Create factor version of 'cylinder' and merge
+cylinders.fac <- as.factor(auto$cylinder)
+auto <- data.frame(auto, cylinders.fac)
+rm(cylinders.fac)
+
+# Rename integer version of 'cylinder'
+auto$cylinders.int <- auto$cylinders
+
+# Drop old version of 'cylinder'
+auto <- subset(auto, select = -cylinders)
+
+#--------------------------------------
+# auto$name
+#--------------------------------------
+# Split 'name' into 'make' and 'model'
+auto <- separate(data = auto, col = name, into = c("make", "model"),
+                 sep = "\\ ", extra = "merge", fill = "right")
+
+# Convert 'make' to factor
+auto$make <- as.factor(auto$make)
+
+# Convert 'model' to factor
+auto$model <- as.factor(auto$model)
+
+# Drop 'model' (295 levels)
+auto <- subset(auto, select = -model)
+```
+    
+```{r Ex11base3}
+# Store data set name for use in titles, etc. later
+data.name <- "auto$"
+
+# Set response variable
+data.response <- "mpg"
+
+# Assign rownames
+auto.rn <- as.numeric(rownames(auto))
+
+# Assign full column names
+auto.cn.all <- colnames(auto)
+
+# Assign numeric column names
+auto.cn.num <- colnames(auto[, !sapply(auto, is.factor)])
+
+# Assign factor column names
+auto.cn.fac <- colnames(auto[, sapply(auto, is.factor)])
+```
+
+```{r Ex11base4}
+# View summary statistics
+summary(auto)
+```
+
+```{r Ex11base5}
+# Explore various frequencies of categorical variables
+
+# Examine frequencies of factor variables
+fac.freq(auto, auto.cn.fac)
+
+# Correct misspellings in 'make'
+auto$make[auto$make == "chevroelt"] <- "chevrolet"
+auto$make[auto$make == "chevy"] <- "chevrolet"
+auto$make[auto$make == "datsun"] <- "nissan"
+auto$make[auto$make == "maxda"] <- "mazda"
+auto$make[auto$make == "mercedes-benz"] <- "mercedes"
+auto$make[auto$make == "maxda"] <- "mazda"
+auto$make[auto$make == "toyouta"] <- "toyota"
+auto$make[auto$make == "vokswagen"] <- "volkswagen"
+auto$make[auto$make == "vw"] <- "volkswagen"
+
+# Examine frequencies of factor variables
+fac.freq(auto, auto.cn.fac)
+
+# Produce barplots of factor variables - skip 'make' (37 levels)
+fac.barplot(auto, auto.cn.fac[-1])
+```
+
+\ 
+
+(a) Create a binary variable, `mpg01`, that contains a 1 if `mpg` contains a value above its median, and a 0 if `mpg` contains a value below its median. You can compute the median using the `median()` function. Note you may find it helpful to use the `data.frame()` function to create a single data set containing both `mpg01` and the other `Auto` variables.
+    
+    \ 
+    
+```{r Ex11a1, indent = "    "}
+# Create indicator variable for +/- median of 'mpg'
+auto$mpg.median <- ifelse(auto$mpg > median(auto$mpg), 1, 0)
+auto$mpg.median <- as.factor(auto$mpg.median)
+
+# Remove 'mpg' from data set
+auto <- subset(auto, select = -mpg)
+
+# Re-assign full column names
+auto.cn.all <- colnames(auto)
+
+# Re-assign numeric column names
+auto.cn.num <- colnames(auto[, !sapply(auto, is.factor)])
+
+# Re-assign factor column names
+auto.cn.fac <- colnames(auto[, sapply(auto, is.factor)])
+```
+    
+    \ 
+    
+(b) Explore the data graphically in order to investigate the association between `mpg01` and the other features. Which of the other features seem most likely to be useful in predicting `mpg01`? Scatterplots and boxplots may be useful tools to answer this question. Describe your findings.
+    
+    \ 
+    
+    _Correlation to `mpg.median`_
+    
+```{r auto.corr, indent = "    "}
+# Produce numeric values of correlation to 'mpg.median'
+auto.cor <- cor(as.numeric(auto$mpg.median), auto[auto.cn.num])
+
+# Add row name of 'mpg.median'
+rownames(auto.cor) <- "mpg.median"
+
+# View results
+round(auto.cor, digits = 4)
+```    
+    
+```{r include = F}
+# Store par.old (known issue w/ corrplot())
+par.old <- par()
+```
+    
+```{r auto.corrplot, indent = "    "}
+# Produce plot of correlation between 'mpg.median' and numeric variables
+corrplot(cor(as.numeric(auto$mpg.median), auto[auto.cn.num]), 
+         tl.col = "black", tl.cex = 0.8, tl.srt = 45)
+```
+    
+```{r include = F, warning = F}
+# Restore par() settings
+par(par.old)
+```
+    
+    \ 
+    
+    _Scatterplots & Boxplots_
+    
+```{r include = F}
+par(mfcol = c(2, 2))
+```
+    
+```{r auto.sp, indent = "    ", fig.width = 8, fig.height = 8}
+# Declare 'mpg.median' as response
+data.response <- "mpg.median"
+
+# View histogram, boxplot, scatterplot, Q-Q plot
+num.plots(auto, auto.cn.num, norm = T, vs = T)
+```
+    
+```{r include = F}
+par(mfcol = c(1, 1))
+```
+    
+```{r auto.spm, indent = "    ", fig.width = 8, fig.height = 8}
+# Create scatterplot matrix
+pairs(auto[auto.cn.num], col = auto$mpg.median,
+      main = "Scatterplot Matrix: Colored Levels of 'mpg.median'")
+```
+    
+    \ 
+    
+    __Comments__: The first four scatterplots and boxplots are particularly useful (the last three are really more factor variables, and a factor version of both `auto$cylinders` and `auto$origin` was created earlier).
+    
+    In particular, it appears that motor vehicles with lower values of `displacement`, `weight`, and `horsepower` tend to be associated with having an `mpg` value above the median; motor vehicles with higher values of `acceleration` (a longer acceleration time) also tend to be associated with having an `mpg` value above the median.
+    
+    \ 
+    
+(c) Split the data into a training set and a test set.
+    
+    \ 
+    
+```{r Ex11c2, indent = "    "}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 70/30
+auto.train.rn <- as.logical(rbinom(nrow(auto), 1, 0.7))
+
+# Compare split to approximation, target = 70
+mean(auto.train.rn)
+```
+    
+    \ 
+    
+(d) Perform LDA on the training data in order to predict `mpg01` using the variables that seemed most associated with `mpg01` in (b). What is the test error of the model obtained?
+    
+    \ 
+    
+    __LDA: Model 1__
+    
+```{r Ex11d1, indent = "    "}
+#------------------------------------------------------------------------------
+# Train Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+auto.lda.m1.train <- lda(mpg.median ~ displacement*horsepower +
+                                      displacement*weight +
+                                      displacement*acceleration +
+                                      cylinders.fac +
+                                      origin.fac,
+                         data = auto, subset = auto.train.rn)
+auto.lda.m1.train
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+auto.lda.m1.train.pred <- predict(auto.lda.m1.train)$post[, 2]
+hist(auto.lda.m1.train.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Training Data")
+mean(auto.lda.m1.train.pred)
+
+#--------------------------------------
+# Assign values of ROC curve on train data
+#--------------------------------------
+# Assign values for ROC curve
+auto.lda.m1.roc <- roc(response = auto$mpg.median[auto.train.rn],
+                       predictor = auto.lda.m1.train.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+auto.lda.m1.op.dist <- sqrt((auto.lda.m1.roc$specificities - 1)^2 + 
+                            (auto.lda.m1.roc$sensitivities - 1)^2)
+auto.lda.m1.op.index <- which.min(auto.lda.m1.op.dist)
+auto.lda.m1.op.thresh <- auto.lda.m1.roc$thresholds[auto.lda.m1.op.index]
+print(auto.lda.m1.op.thresh)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(auto.lda.m1.roc, col = "blue", main = "ROC Curve for auto.lda.m1.roc")
+
+# Add mark for optimal threshold
+points(auto.lda.m1.roc$specificities[auto.lda.m1.op.index],
+       auto.lda.m1.roc$sensitivities[auto.lda.m1.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Classify train data based on optimal threshold
+#--------------------------------------
+auto.lda.m1.train.class <- rep("0", length(auto.lda.m1.train.pred))
+auto.lda.m1.train.class[auto.lda.m1.train.pred > auto.lda.m1.op.thresh] <- "1"
+auto.lda.m1.train.class <- as.factor(auto.lda.m1.train.class)
+
+#--------------------------------------
+# Create confusion matrix for train data based on classification
+#--------------------------------------
+auto.lda.m1.train.cm <- table(auto$mpg.median[auto.train.rn],
+                              auto.lda.m1.train.class,
+                              dnn = c("Actual", "Predicted"))
+auto.lda.m1.train.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for train data
+#--------------------------------------
+# TP
+auto.lda.m1.train.tp <- auto.lda.m1.train.cm["1", "1"] / 
+                        sum(auto.lda.m1.train.cm["1", ])
+
+# FP
+auto.lda.m1.train.fp <- auto.lda.m1.train.cm["0", "1"] / 
+                        sum(auto.lda.m1.train.cm["0", ])
+
+# Merge the results
+auto.lda.m1.train.tpfp <- cbind(auto.lda.m1.train.tp, auto.lda.m1.train.fp)
+colnames(auto.lda.m1.train.tpfp) <- c("True Positive", "False Positive")
+rownames(auto.lda.m1.train.tpfp) <- "auto.lda.m1.train"
+auto.lda.m1.train.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for train data
+#--------------------------------------
+# Calculate percent correct for train data
+auto.lda.m1.train.pc <- sum(diag(prop.table(auto.lda.m1.train.cm)))
+auto.lda.m1.train.pc
+
+# Calculate percent incorrect for train error
+auto.lda.m1.train.pi <- (1 - sum(diag(prop.table(auto.lda.m1.train.cm))))
+auto.lda.m1.train.pi
+
+# Alternate method (same results)
+# mean(auto.lda.m1.train.class == auto$mpg.median[auto.train.rn])
+# mean(auto.lda.m1.train.class != auto$mpg.median[auto.train.rn])
+
+#------------------------------------------------------------------------------
+# Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+auto.lda.m1.test.pred <- predict(auto.lda.m1.train,
+                                 newdata = auto[!auto.train.rn, ])$post[, 2]
+hist(auto.lda.m1.test.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Testing Data")
+mean(auto.lda.m1.test.pred)
+
+#--------------------------------------
+# Classify test data based on optimal threshold
+#--------------------------------------
+auto.lda.m1.test.class <- rep("0", length(auto.lda.m1.test.pred))
+auto.lda.m1.test.class[auto.lda.m1.test.pred > auto.lda.m1.op.thresh] <- "1"
+auto.lda.m1.test.class <- as.factor(auto.lda.m1.test.class)
+
+#--------------------------------------
+# Create confusion matrix for test data based on classification
+#--------------------------------------
+auto.lda.m1.test.cm <- table(auto$mpg.median[!auto.train.rn],
+                             auto.lda.m1.test.class,
+                             dnn = c("Actual", "Predicted"))
+auto.lda.m1.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+auto.lda.m1.test.tp <- auto.lda.m1.test.cm["1", "1"] / 
+                       sum(auto.lda.m1.test.cm["1", ])
+
+# FP
+auto.lda.m1.test.fp <- auto.lda.m1.test.cm["0", "1"] / 
+                       sum(auto.lda.m1.test.cm["0", ])
+
+# Merge the results
+auto.lda.m1.test.tpfp <- cbind(auto.lda.m1.test.tp, auto.lda.m1.test.fp)
+colnames(auto.lda.m1.test.tpfp) <- c("True Positive", "False Positive")
+rownames(auto.lda.m1.test.tpfp) <- "auto.lda.m1.test"
+auto.lda.m1.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+auto.lda.m1.test.pc <- sum(diag(prop.table(auto.lda.m1.test.cm)))
+auto.lda.m1.test.pc
+
+# Calculate percent incorrect for test error
+auto.lda.m1.test.pi <- (1 - sum(diag(prop.table(auto.lda.m1.test.cm))))
+auto.lda.m1.test.pi
+
+# Alternate method (same results)
+# mean(auto.lda.m1.test.class == auto$mpg.median[!auto.train.rn])
+# mean(auto.lda.m1.test.class != auto$mpg.median[!auto.train.rn])
+```
+    
+    \ 
+    
+    __Comments__: The _Incorrect_ value corresponds to the error in the model. For `auto.lda.m1`, the train error is 9.64%, while the test error is 8.04%. Compared to the `train` model (`auto.lda.m1.train`), the `test` model (`auto.lda.m1.test`) had a marginally lower _True Positive_ rate, lower _False Positive_ rate, and had a higher _Correct_ rate and lower _Incorrect_ rate.
+    
+```{r Ex11d2, indent = "    "}
+#------------------------------------------------------------------------------
+# Train - Test Compare
+#------------------------------------------------------------------------------
+# Merge TP-FP rates for train and test data
+auto.lda.m1.comp <- rbind(auto.lda.m1.train.tpfp, auto.lda.m1.test.tpfp)
+
+# Merge PC-PI rates for train and test data
+auto.lda.m1.comp <- cbind(auto.lda.m1.comp,
+                          rbind(auto.lda.m1.train.pc, auto.lda.m1.test.pc),
+                          rbind(auto.lda.m1.train.pi, auto.lda.m1.test.pi))
+
+# Rename rows and columns
+colnames(auto.lda.m1.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(auto.lda.m1.comp, digits = 4) * 100)
+```
+    
+    \ 
+    
+(e) Perform QDA on the training data in order to predict `mpg01` using the variables that seemed most associated with `mpg01` in (b). What is the test error of the model obtained?
+    
+    \ 
+    
+    __QDA: Model 1__
+    
+```{r Ex11e1, indent = "    "}
+#------------------------------------------------------------------------------
+# Train Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+auto.qda.m1.train <- qda(mpg.median ~ displacement*horsepower +
+                                      displacement*weight +
+                                      displacement*acceleration +
+                                      cylinders.fac +
+                                      origin.fac,
+                         data = auto, subset = auto.train.rn)
+auto.qda.m1.train
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+auto.qda.m1.train.pred <- predict(auto.qda.m1.train)$post[, 2]
+hist(auto.qda.m1.train.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Training Data")
+mean(auto.qda.m1.train.pred)
+
+#--------------------------------------
+# Assign values of ROC curve on train data
+#--------------------------------------
+# Assign values for ROC curve
+auto.qda.m1.roc <- roc(response = auto$mpg.median[auto.train.rn],
+                       predictor = auto.qda.m1.train.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+auto.qda.m1.op.dist <- sqrt((auto.qda.m1.roc$specificities - 1)^2 + 
+                            (auto.qda.m1.roc$sensitivities - 1)^2)
+auto.qda.m1.op.index <- which.min(auto.qda.m1.op.dist)
+auto.qda.m1.op.thresh <- auto.qda.m1.roc$thresholds[auto.qda.m1.op.index]
+print(auto.qda.m1.op.thresh)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(auto.qda.m1.roc, col = "blue", main = "ROC Curve for auto.qda.m1.roc")
+
+# Add mark for optimal threshold
+points(auto.qda.m1.roc$specificities[auto.qda.m1.op.index],
+       auto.qda.m1.roc$sensitivities[auto.qda.m1.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Classify train data based on optimal threshold
+#--------------------------------------
+auto.qda.m1.train.class <- rep("0", length(auto.qda.m1.train.pred))
+auto.qda.m1.train.class[auto.qda.m1.train.pred > auto.qda.m1.op.thresh] <- "1"
+auto.qda.m1.train.class <- as.factor(auto.qda.m1.train.class)
+
+#--------------------------------------
+# Create confusion matrix for train data based on classification
+#--------------------------------------
+auto.qda.m1.train.cm <- table(auto$mpg.median[auto.train.rn],
+                              auto.qda.m1.train.class,
+                              dnn = c("Actual", "Predicted"))
+auto.qda.m1.train.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for train data
+#--------------------------------------
+# TP
+auto.qda.m1.train.tp <- auto.qda.m1.train.cm["1", "1"] / 
+                        sum(auto.qda.m1.train.cm["1", ])
+
+# FP
+auto.qda.m1.train.fp <- auto.qda.m1.train.cm["0", "1"] / 
+                        sum(auto.qda.m1.train.cm["0", ])
+
+# Merge the results
+auto.qda.m1.train.tpfp <- cbind(auto.qda.m1.train.tp, auto.qda.m1.train.fp)
+colnames(auto.qda.m1.train.tpfp) <- c("True Positive", "False Positive")
+rownames(auto.qda.m1.train.tpfp) <- "auto.qda.m1.train"
+auto.qda.m1.train.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for train data
+#--------------------------------------
+# Calculate percent correct for train data
+auto.qda.m1.train.pc <- sum(diag(prop.table(auto.qda.m1.train.cm)))
+auto.qda.m1.train.pc
+
+# Calculate percent incorrect for train error
+auto.qda.m1.train.pi <- (1 - sum(diag(prop.table(auto.qda.m1.train.cm))))
+auto.qda.m1.train.pi
+
+# Alternate method (same results)
+# mean(auto.qda.m1.train.class == auto$mpg.median[auto.train.rn])
+# mean(auto.qda.m1.train.class != auto$mpg.median[auto.train.rn])
+
+#------------------------------------------------------------------------------
+# Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+auto.qda.m1.test.pred <- predict(auto.qda.m1.train,
+                                 newdata = auto[!auto.train.rn, ])$post[, 2]
+hist(auto.qda.m1.test.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Testing Data")
+mean(auto.qda.m1.test.pred)
+
+#--------------------------------------
+# Classify test data based on optimal threshold
+#--------------------------------------
+auto.qda.m1.test.class <- rep("0", length(auto.qda.m1.test.pred))
+auto.qda.m1.test.class[auto.qda.m1.test.pred > auto.qda.m1.op.thresh] <- "1"
+auto.qda.m1.test.class <- as.factor(auto.qda.m1.test.class)
+
+#--------------------------------------
+# Create confusion matrix for test data based on classification
+#--------------------------------------
+auto.qda.m1.test.cm <- table(auto$mpg.median[!auto.train.rn],
+                             auto.qda.m1.test.class,
+                             dnn = c("Actual", "Predicted"))
+auto.qda.m1.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+auto.qda.m1.test.tp <- auto.qda.m1.test.cm["1", "1"] / 
+                       sum(auto.qda.m1.test.cm["1", ])
+
+# FP
+auto.qda.m1.test.fp <- auto.qda.m1.test.cm["0", "1"] / 
+                       sum(auto.qda.m1.test.cm["0", ])
+
+# Merge the results
+auto.qda.m1.test.tpfp <- cbind(auto.qda.m1.test.tp, auto.qda.m1.test.fp)
+colnames(auto.qda.m1.test.tpfp) <- c("True Positive", "False Positive")
+rownames(auto.qda.m1.test.tpfp) <- "auto.qda.m1.test"
+auto.qda.m1.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+auto.qda.m1.test.pc <- sum(diag(prop.table(auto.qda.m1.test.cm)))
+auto.qda.m1.test.pc
+
+# Calculate percent incorrect for test error
+auto.qda.m1.test.pi <- (1 - sum(diag(prop.table(auto.qda.m1.test.cm))))
+auto.qda.m1.test.pi
+
+# Alternate method (same results)
+# mean(auto.qda.m1.test.class == auto$mpg.median[!auto.train.rn])
+# mean(auto.qda.m1.test.class != auto$mpg.median[!auto.train.rn])
+```
+    
+    \ 
+    
+    __Comments__: The _Incorrect_ value corresponds to the error in the model. For `auto.qda.m1`, the train error is 7.86%, while the test error is 8.04%. Compared to the `train` model (`auto.qda.m1.train`), the `test` model (`auto.qda.m1.test`) had a lower _True Positive_ rate and lower _False Positive_ rate; the difference between the _Correct_ rate and _Incorrect_ rate is minor and overfitting is not a major concern.
+    
+```{rEx11e2, indent = "    "}
+#------------------------------------------------------------------------------
+# Train - Test Compare
+#------------------------------------------------------------------------------
+# Merge TP-FP rates for train and test data
+auto.qda.m1.comp <- rbind(auto.qda.m1.train.tpfp, auto.qda.m1.test.tpfp)
+
+# Merge PC-PI rates for train and test data
+auto.qda.m1.comp <- cbind(auto.qda.m1.comp,
+                          rbind(auto.qda.m1.train.pc, auto.qda.m1.test.pc),
+                          rbind(auto.qda.m1.train.pi, auto.qda.m1.test.pi))
+
+# Rename rows and columns
+colnames(auto.qda.m1.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(auto.qda.m1.comp, digits = 4) * 100)
+```
+    
+    \ 
+    
+(f) Perform logistic regression on the training data in order to predict `mpg01` using the variables that seemed most associated with `mpg01` in (b). What is the test error of the model obtained?
+    
+    \ 
+    
+    __Logistic Regression: Model 1__
+    
+```{r Ex11f1, indent = "    "}
+#------------------------------------------------------------------------------
+# Train Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+auto.glm.m1.train <- glm(mpg.median ~ displacement*horsepower +
+                                      displacement*weight +
+                                      displacement*acceleration +
+                                      cylinders.fac +
+                                      origin.fac,
+                         data = auto, family = binomial, 
+                         subset = auto.train.rn)
+auto.glm.m1.train
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+auto.glm.m1.train.pred <- predict(auto.glm.m1.train, type = "response")
+hist(auto.glm.m1.train.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Training Data")
+mean(auto.glm.m1.train.pred)
+
+#--------------------------------------
+# Assign values of ROC curve on train data
+#--------------------------------------
+# Assign values for ROC curve
+auto.glm.m1.roc <- roc(response = auto$mpg.median[auto.train.rn],
+                       predictor = auto.glm.m1.train.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+auto.glm.m1.op.dist <- sqrt((auto.glm.m1.roc$specificities - 1)^2 + 
+                            (auto.glm.m1.roc$sensitivities - 1)^2)
+auto.glm.m1.op.index <- which.min(auto.glm.m1.op.dist)
+auto.glm.m1.op.thresh <- auto.glm.m1.roc$thresholds[auto.glm.m1.op.index]
+print(auto.glm.m1.op.thresh)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(auto.glm.m1.roc, col = "blue", main = "ROC Curve for auto.glm.m1.roc")
+
+# Add mark for optimal threshold
+points(auto.glm.m1.roc$specificities[auto.glm.m1.op.index],
+       auto.glm.m1.roc$sensitivities[auto.glm.m1.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Classify train data based on optimal threshold
+#--------------------------------------
+auto.glm.m1.train.class <- rep("0", length(auto.glm.m1.train.pred))
+auto.glm.m1.train.class[auto.glm.m1.train.pred > auto.glm.m1.op.thresh] <- "1"
+auto.glm.m1.train.class <- as.factor(auto.glm.m1.train.class)
+
+#--------------------------------------
+# Create confusion matrix for train data based on classification
+#--------------------------------------
+auto.glm.m1.train.cm <- table(auto$mpg.median[auto.train.rn],
+                              auto.glm.m1.train.class,
+                              dnn = c("Actual", "Predicted"))
+auto.glm.m1.train.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for train data
+#--------------------------------------
+# TP
+auto.glm.m1.train.tp <- auto.glm.m1.train.cm["1", "1"] / 
+                        sum(auto.glm.m1.train.cm["1", ])
+
+# FP
+auto.glm.m1.train.fp <- auto.glm.m1.train.cm["0", "1"] / 
+                        sum(auto.glm.m1.train.cm["0", ])
+
+# Merge the results
+auto.glm.m1.train.tpfp <- cbind(auto.glm.m1.train.tp, auto.glm.m1.train.fp)
+colnames(auto.glm.m1.train.tpfp) <- c("True Positive", "False Positive")
+rownames(auto.glm.m1.train.tpfp) <- "auto.glm.m1.train"
+auto.glm.m1.train.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for train data
+#--------------------------------------
+# Calculate percent correct for train data
+auto.glm.m1.train.pc <- sum(diag(prop.table(auto.glm.m1.train.cm)))
+auto.glm.m1.train.pc
+
+# Calculate percent incorrect for train error
+auto.glm.m1.train.pi <- (1 - sum(diag(prop.table(auto.glm.m1.train.cm))))
+auto.glm.m1.train.pi
+
+# Alternate method (same results)
+# mean(auto.glm.m1.train.class == auto$mpg.median[auto.train.rn])
+# mean(auto.glm.m1.train.class != auto$mpg.median[auto.train.rn])
+
+#------------------------------------------------------------------------------
+# Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+auto.glm.m1.test.pred <- predict(auto.glm.m1.train, type = "response",
+                                 newdata = auto[!auto.train.rn, ])
+hist(auto.glm.m1.test.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Testing Data")
+mean(auto.glm.m1.test.pred)
+
+#--------------------------------------
+# Classify test data based on optimal threshold
+#--------------------------------------
+auto.glm.m1.test.class <- rep("0", length(auto.glm.m1.test.pred))
+auto.glm.m1.test.class[auto.glm.m1.test.pred > auto.glm.m1.op.thresh] <- "1"
+auto.glm.m1.test.class <- as.factor(auto.glm.m1.test.class)
+
+#--------------------------------------
+# Create confusion matrix for test data based on classification
+#--------------------------------------
+auto.glm.m1.test.cm <- table(auto$mpg.median[!auto.train.rn],
+                             auto.glm.m1.test.class,
+                             dnn = c("Actual", "Predicted"))
+auto.glm.m1.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+auto.glm.m1.test.tp <- auto.glm.m1.test.cm["1", "1"] / 
+                       sum(auto.glm.m1.test.cm["1", ])
+
+# FP
+auto.glm.m1.test.fp <- auto.glm.m1.test.cm["0", "1"] / 
+                       sum(auto.glm.m1.test.cm["0", ])
+
+# Merge the results
+auto.glm.m1.test.tpfp <- cbind(auto.glm.m1.test.tp, auto.glm.m1.test.fp)
+colnames(auto.glm.m1.test.tpfp) <- c("True Positive", "False Positive")
+rownames(auto.glm.m1.test.tpfp) <- "auto.glm.m1.test"
+auto.glm.m1.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+auto.glm.m1.test.pc <- sum(diag(prop.table(auto.glm.m1.test.cm)))
+auto.glm.m1.test.pc
+
+# Calculate percent incorrect for test error
+auto.glm.m1.test.pi <- (1 - sum(diag(prop.table(auto.glm.m1.test.cm))))
+auto.glm.m1.test.pi
+
+# Alternate method (same results)
+# mean(auto.glm.m1.test.class == auto$mpg.median[!auto.train.rn])
+# mean(auto.glm.m1.test.class != auto$mpg.median[!auto.train.rn])
+```
+    
+    \ 
+    
+    __Comments__: The _Incorrect_ value corresponds to the error in the model. For `auto.glm.m1`, the train error is 8.57%, while the test error is 10.71%. The `test` model (`auto.glm.m1.test`) had a lower _True Positive_ rate, higher _False Positive_ rate, lower _Correct_ rate, and higher _Incorrect_ rate compared to the `train` model (`auto.glm.m1.train`). This suggests overfitting may be taking place.
+    
+```{r ex11f2, indent = "    "}
+#------------------------------------------------------------------------------
+# Train - Test Compare
+#------------------------------------------------------------------------------
+# Merge TP-FP rates for train and test data
+auto.glm.m1.comp <- rbind(auto.glm.m1.train.tpfp, auto.glm.m1.test.tpfp)
+
+# Merge PC-PI rates for train and test data
+auto.glm.m1.comp <- cbind(auto.glm.m1.comp,
+                          rbind(auto.glm.m1.train.pc, auto.glm.m1.test.pc),
+                          rbind(auto.glm.m1.train.pi, auto.glm.m1.test.pi))
+
+# Rename rows and columns
+colnames(auto.glm.m1.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(auto.glm.m1.comp, digits = 4) * 100)
+```
+    
+    \ 
+    
+(g) Perform KNN on the training data, with several values of $K$, in order to predict `mpg01`. Use only the variables that seemed most associated with `mpg01` in (b). What test errors do you obtain? Which value of $K$ seems to perform the best on this data set?
+    
+    \ 
+    
+```{r Ex11g1, indent = "    "}
+# Create matrix of predictor variables, include any interations
+auto.knn.names <- cbind(auto$displacement, auto$horsepower,
+                        auto$weight, auto$acceleration,
+                        (auto$displacement * auto$horsepower),
+                        (auto$displacement * auto$weight),
+                        (auto$displacement * auto$acceleration),
+                        auto$cylinders.fac, auto$origin.fac)
+```
+    
+    \ 
+    
+    __KNN: Model 1__
+    \
+    _$K$ = 3_
+    
+```{r Ex11g2, indent = "    "}
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Predict using k = 3
+auto.knn.m1.test.pred <- knn(auto.knn.names[auto.train.rn, ],
+                             auto.knn.names[!auto.train.rn, ],
+                             auto$mpg.median[auto.train.rn], k = 3, prob = T)
+
+#--------------------------------------
+# Create confusion matrix for test data
+#--------------------------------------
+auto.knn.m1.test.cm <- table(auto$mpg.median[!auto.train.rn],
+                             auto.knn.m1.test.pred,
+                             dnn = c("Actual", "Predicted"))
+auto.knn.m1.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+auto.knn.m1.test.tp <- auto.knn.m1.test.cm["1", "1"] / 
+                       sum(auto.knn.m1.test.cm["1", ])
+
+# FP
+auto.knn.m1.test.fp <- auto.knn.m1.test.cm["0", "1"] / 
+                       sum(auto.knn.m1.test.cm["0", ])
+
+# Merge the results
+auto.knn.m1.test.tpfp <- cbind(auto.knn.m1.test.tp, auto.knn.m1.test.fp)
+colnames(auto.knn.m1.test.tpfp) <- c("True Positive", "False Positive")
+rownames(auto.knn.m1.test.tpfp) <- "auto.knn.m1.test"
+auto.knn.m1.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+auto.knn.m1.test.pc <- sum(diag(prop.table(auto.knn.m1.test.cm)))
+auto.knn.m1.test.pc
+
+# Calculate percent incorrect for test error
+auto.knn.m1.test.pi <- (1 - sum(diag(prop.table(auto.knn.m1.test.cm))))
+auto.knn.m1.test.pi
+
+# Alternate method (same results)
+# mean(auto.knn.m1.test.pred == auto$mpg.median[!auto.train.rn])
+# mean(auto.knn.m1.test.pred != auto$mpg.median[!auto.train.rn])
+
+#------------------------------------------------------------------------------
+# Model performance on test data
+#------------------------------------------------------------------------------
+# Merge TP-FP and PC-PI rates for test data
+auto.knn.m1.comp <- cbind(auto.knn.m1.test.tpfp, auto.knn.m1.test.pc,
+                          auto.knn.m1.test.pi)
+
+# Rename rows and columns
+colnames(auto.knn.m1.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(auto.knn.m1.comp, digits = 4) * 100)
+```
+    
+    \ 
+    
+    __KNN: Model 2__
+    \
+    _$K$ = 6_
+    
+```{r Ex11g3, indent = "    "}
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Predict using k = 6
+auto.knn.m2.test.pred <- knn(auto.knn.names[auto.train.rn, ],
+                             auto.knn.names[!auto.train.rn, ],
+                             auto$mpg.median[auto.train.rn], k = 6, prob = T)
+
+#--------------------------------------
+# Create confusion matrix for test data
+#--------------------------------------
+auto.knn.m2.test.cm <- table(auto$mpg.median[!auto.train.rn],
+                             auto.knn.m2.test.pred,
+                             dnn = c("Actual", "Predicted"))
+auto.knn.m2.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+auto.knn.m2.test.tp <- auto.knn.m2.test.cm["1", "1"] / 
+                       sum(auto.knn.m2.test.cm["1", ])
+
+# FP
+auto.knn.m2.test.fp <- auto.knn.m2.test.cm["0", "1"] / 
+                       sum(auto.knn.m2.test.cm["0", ])
+
+# Merge the results
+auto.knn.m2.test.tpfp <- cbind(auto.knn.m2.test.tp, auto.knn.m2.test.fp)
+colnames(auto.knn.m2.test.tpfp) <- c("True Positive", "False Positive")
+rownames(auto.knn.m2.test.tpfp) <- "auto.knn.m2.test"
+auto.knn.m2.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+auto.knn.m2.test.pc <- sum(diag(prop.table(auto.knn.m2.test.cm)))
+auto.knn.m2.test.pc
+
+# Calculate percent incorrect for test error
+auto.knn.m2.test.pi <- (1 - sum(diag(prop.table(auto.knn.m2.test.cm))))
+auto.knn.m2.test.pi
+
+# Alternate method (same results)
+# mean(auto.knn.m2.test.pred == auto$mpg.median[!auto.train.rn])
+# mean(auto.knn.m2.test.pred != auto$mpg.median[!auto.train.rn])
+
+#------------------------------------------------------------------------------
+# Model performance on test data
+#------------------------------------------------------------------------------
+# Merge TP-FP and PC-PI rates for test data
+auto.knn.m2.comp <- cbind(auto.knn.m2.test.tpfp, auto.knn.m2.test.pc,
+                          auto.knn.m2.test.pi)
+
+# Rename rows and columns
+colnames(auto.knn.m2.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(auto.knn.m2.comp, digits = 4) * 100)
+```
+    
+    \ 
+    
+    __KNN: Model 3__
+    \
+    _$K$ = 10_
+    
+```{r Ex11g4, indent = "    "}
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Predict using k = 10
+auto.knn.m3.test.pred <- knn(auto.knn.names[auto.train.rn, ],
+                             auto.knn.names[!auto.train.rn, ],
+                             auto$mpg.median[auto.train.rn], k = 10, prob = T)
+
+#--------------------------------------
+# Create confusion matrix for test data
+#--------------------------------------
+auto.knn.m3.test.cm <- table(auto$mpg.median[!auto.train.rn],
+                             auto.knn.m3.test.pred,
+                             dnn = c("Actual", "Predicted"))
+auto.knn.m3.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+auto.knn.m3.test.tp <- auto.knn.m3.test.cm["1", "1"] / 
+                       sum(auto.knn.m3.test.cm["1", ])
+
+# FP
+auto.knn.m3.test.fp <- auto.knn.m3.test.cm["0", "1"] / 
+                       sum(auto.knn.m3.test.cm["0", ])
+
+# Merge the results
+auto.knn.m3.test.tpfp <- cbind(auto.knn.m3.test.tp, auto.knn.m3.test.fp)
+colnames(auto.knn.m3.test.tpfp) <- c("True Positive", "False Positive")
+rownames(auto.knn.m3.test.tpfp) <- "auto.knn.m3.test"
+auto.knn.m3.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+auto.knn.m3.test.pc <- sum(diag(prop.table(auto.knn.m3.test.cm)))
+auto.knn.m3.test.pc
+
+# Calculate percent incorrect for test error
+auto.knn.m3.test.pi <- (1 - sum(diag(prop.table(auto.knn.m3.test.cm))))
+auto.knn.m3.test.pi
+
+# Alternate method (same results)
+# mean(auto.knn.m3.test.pred == auto$mpg.median[!auto.train.rn])
+# mean(auto.knn.m3.test.pred != auto$mpg.median[!auto.train.rn])
+
+#------------------------------------------------------------------------------
+# Model performance on test data
+#------------------------------------------------------------------------------
+# Merge TP-FP and PC-PI rates for test data
+auto.knn.m3.comp <- cbind(auto.knn.m3.test.tpfp, auto.knn.m3.test.pc,
+                          auto.knn.m3.test.pi)
+
+# Rename rows and columns
+colnames(auto.knn.m3.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(auto.knn.m3.comp, digits = 4) * 100)
+```
+    
+    \ 
+    
+    __Comments__: Using the same `seed.value` of `123` and the same predictor variables, the $K$ value of 10 in `auto.knn.m3.test` performed best across the board, except for the _False Positive_ rate, which it tied with `auto.knn.m2.test`. 
+    
+    Interestingly, some values of $K$ produced the same results. For example, $K = 4$, $K = 7$, and $K = 9$ all produced the same _True Positive_, _False Positive_, _Correct_, and _Incorrect_ rates. At first, it appeared this was an error, but after checking the code and using the same code with different values of $K$, the results changed (that is, using new values of $K$ did not produce identical results).
+    
+```{r Ex11g5, indent = "    "}
+# Create column to store values of k used in each model
+auto.knn.comp.kval <- cbind(c(0.03, 0.06, 0.10))
+colnames(auto.knn.comp.kval) <- "K Value"
+
+# Compare TP-FP and PC-PI across models
+auto.knn.comp.merge <- rbind(auto.knn.m1.comp, auto.knn.m2.comp,
+                             auto.knn.m3.comp)
+
+# Merge all together
+auto.knn.comp <- cbind(auto.knn.comp.kval, auto.knn.comp.merge)
+
+# Print results, expressed in percentages
+(round(auto.knn.comp, digits = 4) * 100)
+```
+    
+    \ 
+    
+### Exercise 13
+
+\ 
+
+Using the `Boston` data set, fit classification models in order to predict
+whether a given suburb has a crime rate above or below the median.
+Explore logistic regression, LDA, and KNN models using various subsets
+of the predictors. Describe your findings.
+
+\ 
+
+#### Load & Prep Data
+
+```{r Ex13base1}
+# Load and assign data
+data(Boston)
+bos <- Boston
+rm(Boston)
+```
+
+```{r Ex13base2}
+# Assign data.frame with missing values removed
+bos <- na.omit(bos)
+
+#--------------------------------------
+# bos$chas
+#--------------------------------------
+# Convert 'chas' to factor
+bos$chas <- as.factor(bos$chas)
+
+#--------------------------------------
+# bos$rad
+#--------------------------------------
+# Create factor version of 'rad' and merge
+rad.fac <- as.factor(bos$rad)
+bos <- data.frame(bos, rad.fac)
+rm(rad.fac)
+
+# Rename integer version of 'rad'
+bos$rad.int <- bos$rad
+
+# Drop old version of 'rad'
+bos <- subset(bos, select = -rad)
+
+#--------------------------------------
+# bos$crim.median
+#--------------------------------------
+# Create indicator variable for +/- median of 'crim'
+bos$crim.median <- ifelse(bos$crim > median(bos$crim), 1, 0)
+bos$crim.median <- as.factor(bos$crim.median)
+
+# Remove 'crim' from data set
+bos <- subset(bos, select = -crim)
+```
+
+```{r Ex13base3}
+# Store data set name for use in titles, etc. later
+data.name <- "bos$"
+
+# Set response variable
+data.response <- "crim.median"
+
+# Assign rownames
+bos.rn <- as.numeric(rownames(bos))
+
+# Assign full column names
+bos.cn.all <- colnames(bos)
+
+# Assign numeric column names
+bos.cn.num <- colnames(bos[, !sapply(bos, is.factor)])
+
+# Assign factor column names
+bos.cn.fac <- colnames(bos[, sapply(bos, is.factor)])
+```
+
+```{r Ex13base4}
+# View summary statistics
+summary(bos)
+```
+
+Data prep complete, now begin to explore relationships between variables.
+
+\ 
+
+#### Visual EDA
+
+_Plots of Numeric Variables_
+
+```{r bos.num.plots, fig.width = 8, fig.height = 8}
+# View histogram, boxplot, scatterplot, Q-Q plot
+num.plots(bos, bos.cn.num, norm = T, vs = T)
+```
+
+```{r bos.spm, fig.width = 8, fig.height = 8}
+# Create scatterplot matrix
+pairs(bos[bos.cn.num], col = bos$crim.median,
+      main = "Scatterplot Matrix: Colored Levels of 'crim.median'")
+```
+
+_Plots of Factor Variables_
+
+```{r bos.fac.plots}
+# Explore various frequencies of categorical variables
+
+# Examine frequencies of factor variables
+fac.freq(bos, bos.cn.fac)
+
+# Produce barplots of factor variables - skip 'make' (37 levels)
+fac.barplot(bos, bos.cn.fac)
+```
+
+_Correlation to `crim.median`_
+
+```{r bos.corr}
+# Produce numeric values of correlation to 'crim.median'
+bos.cor <- cor(as.numeric(bos$crim.median), bos[bos.cn.num])
+
+# Add row name of 'mpg.median'
+rownames(bos.cor) <- "crim.median"
+
+# View results
+round(bos.cor, digits = 4)
+```    
+
+```{r include = F}
+# Store par.old (known issue w/ corrplot())
+par.old <- par()
+```
+
+```{r bos.corrplot}
+# Produce plot of correlation between 'mpg.median' and numeric variables
+corrplot(cor(as.numeric(bos$crim.median), bos[bos.cn.num]), 
+         tl.col = "black", tl.cex = 0.8, tl.srt = 45)
+```
+
+```{r include = F, warning = F}
+# Restore par() settings
+par(par.old)
+```
+
+\ 
+
+#### Training-Test Split
+
+```{r bos.split}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 70/30
+bos.train.rn <- as.logical(rbinom(nrow(bos), 1, 0.7))
+
+# Compare split to approximation, target = 70
+mean(bos.train.rn)
+```
+
+\ 
+
+#### Logistic Models
+
+__Logistic Regression: Model 1__
+
+```{r bos.glm.m1, warning = F}
+#------------------------------------------------------------------------------
+# Train Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+bos.glm.m1.train <- glm(crim.median ~ indus +nox +age +dis +tax +rad.fac,
+                        data = bos, family = binomial, 
+                        subset = bos.train.rn)
+bos.glm.m1.train
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+bos.glm.m1.train.pred <- predict(bos.glm.m1.train, type = "response")
+hist(bos.glm.m1.train.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Training Data")
+mean(bos.glm.m1.train.pred)
+
+#--------------------------------------
+# Assign values of ROC curve on train data
+#--------------------------------------
+# Assign values for ROC curve
+bos.glm.m1.roc <- roc(response = bos$crim.median[bos.train.rn],
+                      predictor = bos.glm.m1.train.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+bos.glm.m1.op.dist <- sqrt((bos.glm.m1.roc$specificities - 1)^2 + 
+                           (bos.glm.m1.roc$sensitivities - 1)^2)
+bos.glm.m1.op.index <- which.min(bos.glm.m1.op.dist)
+bos.glm.m1.op.thresh <- bos.glm.m1.roc$thresholds[bos.glm.m1.op.index]
+print(bos.glm.m1.op.thresh)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(bos.glm.m1.roc, col = "blue", main = "ROC Curve for bos.glm.m1.roc")
+
+# Add mark for optimal threshold
+points(bos.glm.m1.roc$specificities[bos.glm.m1.op.index],
+       bos.glm.m1.roc$sensitivities[bos.glm.m1.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Classify train data based on optimal threshold
+#--------------------------------------
+bos.glm.m1.train.class <- rep("0", length(bos.glm.m1.train.pred))
+bos.glm.m1.train.class[bos.glm.m1.train.pred > bos.glm.m1.op.thresh] <- "1"
+bos.glm.m1.train.class <- as.factor(bos.glm.m1.train.class)
+
+#--------------------------------------
+# Create confusion matrix for train data based on classification
+#--------------------------------------
+bos.glm.m1.train.cm <- table(bos$crim.median[bos.train.rn],
+                             bos.glm.m1.train.class,
+                             dnn = c("Actual", "Predicted"))
+bos.glm.m1.train.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for train data
+#--------------------------------------
+# TP
+bos.glm.m1.train.tp <- bos.glm.m1.train.cm["1", "1"] / 
+                       sum(bos.glm.m1.train.cm["1", ])
+
+# FP
+bos.glm.m1.train.fp <- bos.glm.m1.train.cm["0", "1"] / 
+                       sum(bos.glm.m1.train.cm["0", ])
+
+# Merge the results
+bos.glm.m1.train.tpfp <- cbind(bos.glm.m1.train.tp, bos.glm.m1.train.fp)
+colnames(bos.glm.m1.train.tpfp) <- c("True Positive", "False Positive")
+rownames(bos.glm.m1.train.tpfp) <- "bos.glm.m1.train"
+bos.glm.m1.train.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for train data
+#--------------------------------------
+# Calculate percent correct for test data
+bos.glm.m1.train.pc <- sum(diag(prop.table(bos.glm.m1.train.cm)))
+bos.glm.m1.train.pc
+
+# Calculate percent incorrect for test error
+bos.glm.m1.train.pi <- (1 - sum(diag(prop.table(bos.glm.m1.train.cm))))
+bos.glm.m1.train.pi
+
+# Alternate method (same results)
+# mean(bos.glm.m1.train.class == bos$crim.median[bos.train.rn])
+# mean(bos.glm.m1.train.class != bos$crim.median[bos.train.rn])
+
+#------------------------------------------------------------------------------
+# Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+bos.glm.m1.test.pred <- predict(bos.glm.m1.train, type = "response",
+                                newdata = bos[!bos.train.rn, ])
+hist(bos.glm.m1.test.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Testing Data")
+mean(bos.glm.m1.test.pred)
+
+#--------------------------------------
+# Classify test data based on optimal threshold
+#--------------------------------------
+bos.glm.m1.test.class <- rep("0", length(bos.glm.m1.test.pred))
+bos.glm.m1.test.class[bos.glm.m1.test.pred > bos.glm.m1.op.thresh] <- "1"
+bos.glm.m1.test.class <- as.factor(bos.glm.m1.test.class)
+
+#--------------------------------------
+# Create confusion matrix for test data based on classification
+#--------------------------------------
+bos.glm.m1.test.cm <- table(bos$crim.median[!bos.train.rn],
+                            bos.glm.m1.test.class,
+                            dnn = c("Actual", "Predicted"))
+bos.glm.m1.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+bos.glm.m1.test.tp <- bos.glm.m1.test.cm["1", "1"] / 
+                      sum(bos.glm.m1.test.cm["1", ])
+
+# FP
+bos.glm.m1.test.fp <- bos.glm.m1.test.cm["0", "1"] / 
+                      sum(bos.glm.m1.test.cm["0", ])
+
+# Merge the results
+bos.glm.m1.test.tpfp <- cbind(bos.glm.m1.test.tp, bos.glm.m1.test.fp)
+colnames(bos.glm.m1.test.tpfp) <- c("True Positive", "False Positive")
+rownames(bos.glm.m1.test.tpfp) <- "bos.glm.m1.test"
+bos.glm.m1.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+bos.glm.m1.test.pc <- sum(diag(prop.table(bos.glm.m1.test.cm)))
+bos.glm.m1.test.pc
+
+# Calculate percent incorrect for test error
+bos.glm.m1.test.pi <- (1 - sum(diag(prop.table(bos.glm.m1.test.cm))))
+bos.glm.m1.test.pi
+
+# Alternate method (same results)
+# mean(bos.glm.m1.test.class == bos$crim.median[!bos.train.rn])
+# mean(bos.glm.m1.test.class != bos$crim.median[!bos.train.rn])
+
+#------------------------------------------------------------------------------
+# Train - Test Compare
+#------------------------------------------------------------------------------
+# Merge TP-FP rates for train and test data
+bos.glm.m1.comp <- rbind(bos.glm.m1.train.tpfp, bos.glm.m1.test.tpfp)
+
+# Merge PC-PI rates for train and test data
+bos.glm.m1.comp <- cbind(bos.glm.m1.comp,
+                         rbind(bos.glm.m1.train.pc, bos.glm.m1.test.pc),
+                         rbind(bos.glm.m1.train.pi, bos.glm.m1.test.pi))
+
+# Rename rows and columns
+colnames(bos.glm.m1.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(bos.glm.m1.comp, digits = 4) * 100)
+```
+
+\ 
+
+__Logistic Regression: Model 2__
+
+```{r bos.glm.m2, warning = F}
+#------------------------------------------------------------------------------
+# Train Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+bos.glm.m2.train <- glm(crim.median ~ nox +dis +tax +black +lstat +rad.fac,
+                        data = bos, family = binomial, 
+                        subset = bos.train.rn)
+bos.glm.m2.train
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+bos.glm.m2.train.pred <- predict(bos.glm.m2.train, type = "response")
+hist(bos.glm.m2.train.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Training Data")
+mean(bos.glm.m2.train.pred)
+
+#--------------------------------------
+# Assign values of ROC curve on train data
+#--------------------------------------
+# Assign values for ROC curve
+bos.glm.m2.roc <- roc(response = bos$crim.median[bos.train.rn],
+                      predictor = bos.glm.m2.train.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+bos.glm.m2.op.dist <- sqrt((bos.glm.m2.roc$specificities - 1)^2 + 
+                           (bos.glm.m2.roc$sensitivities - 1)^2)
+bos.glm.m2.op.index <- which.min(bos.glm.m2.op.dist)
+bos.glm.m2.op.thresh <- bos.glm.m2.roc$thresholds[bos.glm.m2.op.index]
+print(bos.glm.m2.op.thresh)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(bos.glm.m2.roc, col = "blue", main = "ROC Curve for bos.glm.m2.roc")
+
+# Add mark for optimal threshold
+points(bos.glm.m2.roc$specificities[bos.glm.m2.op.index],
+       bos.glm.m2.roc$sensitivities[bos.glm.m2.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Classify train data based on optimal threshold
+#--------------------------------------
+bos.glm.m2.train.class <- rep("0", length(bos.glm.m2.train.pred))
+bos.glm.m2.train.class[bos.glm.m2.train.pred > bos.glm.m2.op.thresh] <- "1"
+bos.glm.m2.train.class <- as.factor(bos.glm.m2.train.class)
+
+#--------------------------------------
+# Create confusion matrix for train data based on classification
+#--------------------------------------
+bos.glm.m2.train.cm <- table(bos$crim.median[bos.train.rn],
+                             bos.glm.m2.train.class,
+                             dnn = c("Actual", "Predicted"))
+bos.glm.m2.train.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for train data
+#--------------------------------------
+# TP
+bos.glm.m2.train.tp <- bos.glm.m2.train.cm["1", "1"] / 
+                       sum(bos.glm.m2.train.cm["1", ])
+
+# FP
+bos.glm.m2.train.fp <- bos.glm.m2.train.cm["0", "1"] / 
+                       sum(bos.glm.m2.train.cm["0", ])
+
+# Merge the results
+bos.glm.m2.train.tpfp <- cbind(bos.glm.m2.train.tp, bos.glm.m2.train.fp)
+colnames(bos.glm.m2.train.tpfp) <- c("True Positive", "False Positive")
+rownames(bos.glm.m2.train.tpfp) <- "bos.glm.m2.train"
+bos.glm.m2.train.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for train data
+#--------------------------------------
+# Calculate percent correct for test data
+bos.glm.m2.train.pc <- sum(diag(prop.table(bos.glm.m2.train.cm)))
+bos.glm.m2.train.pc
+
+# Calculate percent incorrect for test error
+bos.glm.m2.train.pi <- (1 - sum(diag(prop.table(bos.glm.m2.train.cm))))
+bos.glm.m2.train.pi
+
+# Alternate method (same results)
+# mean(bos.glm.m2.train.class == bos$crim.median[bos.train.rn])
+# mean(bos.glm.m2.train.class != bos$crim.median[bos.train.rn])
+
+#------------------------------------------------------------------------------
+# Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+bos.glm.m2.test.pred <- predict(bos.glm.m2.train, type = "response",
+                                newdata = bos[!bos.train.rn, ])
+hist(bos.glm.m2.test.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Testing Data")
+mean(bos.glm.m2.test.pred)
+
+#--------------------------------------
+# Classify test data based on optimal threshold
+#--------------------------------------
+bos.glm.m2.test.class <- rep("0", length(bos.glm.m2.test.pred))
+bos.glm.m2.test.class[bos.glm.m2.test.pred > bos.glm.m2.op.thresh] <- "1"
+bos.glm.m2.test.class <- as.factor(bos.glm.m2.test.class)
+
+#--------------------------------------
+# Create confusion matrix for test data based on classification
+#--------------------------------------
+bos.glm.m2.test.cm <- table(bos$crim.median[!bos.train.rn],
+                            bos.glm.m2.test.class,
+                            dnn = c("Actual", "Predicted"))
+bos.glm.m2.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+bos.glm.m2.test.tp <- bos.glm.m2.test.cm["1", "1"] / 
+                      sum(bos.glm.m2.test.cm["1", ])
+
+# FP
+bos.glm.m2.test.fp <- bos.glm.m2.test.cm["0", "1"] / 
+                      sum(bos.glm.m2.test.cm["0", ])
+
+# Merge the results
+bos.glm.m2.test.tpfp <- cbind(bos.glm.m2.test.tp, bos.glm.m2.test.fp)
+colnames(bos.glm.m2.test.tpfp) <- c("True Positive", "False Positive")
+rownames(bos.glm.m2.test.tpfp) <- "bos.glm.m2.test"
+bos.glm.m2.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+bos.glm.m2.test.pc <- sum(diag(prop.table(bos.glm.m2.test.cm)))
+bos.glm.m2.test.pc
+
+# Calculate percent incorrect for test error
+bos.glm.m2.test.pi <- (1 - sum(diag(prop.table(bos.glm.m2.test.cm))))
+bos.glm.m2.test.pi
+
+# Alternate method (same results)
+# mean(bos.glm.m2.test.class == bos$crim.median[!bos.train.rn])
+# mean(bos.glm.m2.test.class != bos$crim.median[!bos.train.rn])
+
+#------------------------------------------------------------------------------
+# Train - Test Compare
+#------------------------------------------------------------------------------
+# Merge TP-FP rates for train and test data
+bos.glm.m2.comp <- rbind(bos.glm.m2.train.tpfp, bos.glm.m2.test.tpfp)
+
+# Merge PC-PI rates for train and test data
+bos.glm.m2.comp <- cbind(bos.glm.m2.comp,
+                         rbind(bos.glm.m2.train.pc, bos.glm.m2.test.pc),
+                         rbind(bos.glm.m2.train.pi, bos.glm.m2.test.pi))
+
+# Rename rows and columns
+colnames(bos.glm.m2.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(bos.glm.m2.comp, digits = 4) * 100)
+```
+
+\ 
+
+__Comments__: Interestingly, both `bos.glm.m1.train` and `bos.glm.m2.train` had the same percentages for _True Positive_, _False Positivie_, _Correct_, and _Incorrect_. The code was double-checked and no errors or typos were spotted. Deployed on the `test` data, `bos.glm.m1.test` is slightly preferred, having a lower _False Positive_ rate, higher _Correct_ rate, and lower _Incorrect_ rate.
+
+```{r bos.glm.comp}
+# Compare TP-FP and PC-PI across models
+bos.glm.comp <- rbind(bos.glm.m1.comp, bos.glm.m2.comp)
+
+# Print results, expressed in percentages
+(round(bos.glm.comp, digits = 4) * 100)
+```
+
+\ 
+
+#### LDA Models
+
+__LDA: Model 1__
+
+```{r bos.lda.m1}
+#------------------------------------------------------------------------------
+# Train Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+bos.lda.m1.train <- lda(crim.median ~ indus +nox +age +dis +tax +rad.fac,
+                        data = bos, subset = bos.train.rn)
+bos.lda.m1.train
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+bos.lda.m1.train.pred <- predict(bos.lda.m1.train)$post[, 2]
+hist(bos.lda.m1.train.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Training Data")
+mean(bos.lda.m1.train.pred)
+
+#--------------------------------------
+# Assign values of ROC curve on train data
+#--------------------------------------
+# Assign values for ROC curve
+bos.lda.m1.roc <- roc(response = bos$crim.median[bos.train.rn],
+                      predictor = bos.lda.m1.train.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+bos.lda.m1.op.dist <- sqrt((bos.lda.m1.roc$specificities - 1)^2 + 
+                           (bos.lda.m1.roc$sensitivities - 1)^2)
+bos.lda.m1.op.index <- which.min(bos.lda.m1.op.dist)
+bos.lda.m1.op.thresh <- bos.lda.m1.roc$thresholds[bos.lda.m1.op.index]
+print(bos.lda.m1.op.thresh)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(bos.lda.m1.roc, col = "blue", main = "ROC Curve for bos.lda.m1.roc")
+
+# Add mark for optimal threshold
+points(bos.lda.m1.roc$specificities[bos.lda.m1.op.index],
+       bos.lda.m1.roc$sensitivities[bos.lda.m1.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Classify train data based on optimal threshold
+#--------------------------------------
+bos.lda.m1.train.class <- rep("0", length(bos.lda.m1.train.pred))
+bos.lda.m1.train.class[bos.lda.m1.train.pred > bos.lda.m1.op.thresh] <- "1"
+bos.lda.m1.train.class <- as.factor(bos.lda.m1.train.class)
+
+#--------------------------------------
+# Create confusion matrix for train data based on classification
+#--------------------------------------
+bos.lda.m1.train.cm <- table(bos$crim.median[bos.train.rn],
+                             bos.lda.m1.train.class,
+                             dnn = c("Actual", "Predicted"))
+bos.lda.m1.train.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for train data
+#--------------------------------------
+# TP
+bos.lda.m1.train.tp <- bos.lda.m1.train.cm["1", "1"] / 
+                       sum(bos.lda.m1.train.cm["1", ])
+
+# FP
+bos.lda.m1.train.fp <- bos.lda.m1.train.cm["0", "1"] / 
+                       sum(bos.lda.m1.train.cm["0", ])
+
+# Merge the results
+bos.lda.m1.train.tpfp <- cbind(bos.lda.m1.train.tp, bos.lda.m1.train.fp)
+colnames(bos.lda.m1.train.tpfp) <- c("True Positive", "False Positive")
+rownames(bos.lda.m1.train.tpfp) <- "bos.lda.m1.train"
+bos.lda.m1.train.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for train data
+#--------------------------------------
+# Calculate percent correct for train data
+bos.lda.m1.train.pc <- sum(diag(prop.table(bos.lda.m1.train.cm)))
+bos.lda.m1.train.pc
+
+# Calculate percent incorrect for train error
+bos.lda.m1.train.pi <- (1 - sum(diag(prop.table(bos.lda.m1.train.cm))))
+bos.lda.m1.train.pi
+
+# Alternate method (same results)
+# mean(bos.lda.m1.train.class == bos$crim.median[bos.train.rn])
+# mean(bos.lda.m1.train.class != bos$crim.median[bos.train.rn])
+
+#------------------------------------------------------------------------------
+# Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+bos.lda.m1.test.pred <- predict(bos.lda.m1.train,
+                                newdata = bos[!bos.train.rn, ])$post[, 2]
+hist(bos.lda.m1.test.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Testing Data")
+mean(bos.lda.m1.test.pred)
+
+#--------------------------------------
+# Classify test data based on optimal threshold
+#--------------------------------------
+bos.lda.m1.test.class <- rep("0", length(bos.lda.m1.test.pred))
+bos.lda.m1.test.class[bos.lda.m1.test.pred > bos.lda.m1.op.thresh] <- "1"
+bos.lda.m1.test.class <- as.factor(bos.lda.m1.test.class)
+
+#--------------------------------------
+# Create confusion matrix for test data based on classification
+#--------------------------------------
+bos.lda.m1.test.cm <- table(bos$crim.median[!bos.train.rn],
+                            bos.lda.m1.test.class,
+                            dnn = c("Actual", "Predicted"))
+bos.lda.m1.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+bos.lda.m1.test.tp <- bos.lda.m1.test.cm["1", "1"] / 
+                      sum(bos.lda.m1.test.cm["1", ])
+
+# FP
+bos.lda.m1.test.fp <- bos.lda.m1.test.cm["0", "1"] / 
+                      sum(bos.lda.m1.test.cm["0", ])
+
+# Merge the results
+bos.lda.m1.test.tpfp <- cbind(bos.lda.m1.test.tp, bos.lda.m1.test.fp)
+colnames(bos.lda.m1.test.tpfp) <- c("True Positive", "False Positive")
+rownames(bos.lda.m1.test.tpfp) <- "bos.lda.m1.test"
+bos.lda.m1.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+bos.lda.m1.test.pc <- sum(diag(prop.table(bos.lda.m1.test.cm)))
+bos.lda.m1.test.pc
+
+# Calculate percent incorrect for test error
+bos.lda.m1.test.pi <- (1 - sum(diag(prop.table(bos.lda.m1.test.cm))))
+bos.lda.m1.test.pi
+
+# Alternate method (same results)
+# mean(bos.lda.m1.test.class == bos$crim.median[!bos.train.rn])
+# mean(bos.lda.m1.test.class != bos$crim.median[!bos.train.rn])
+
+#------------------------------------------------------------------------------
+# Train - Test Compare
+#------------------------------------------------------------------------------
+# Merge TP-FP rates for train and test data
+bos.lda.m1.comp <- rbind(bos.lda.m1.train.tpfp, bos.lda.m1.test.tpfp)
+
+# Merge PC-PI rates for train and test data
+bos.lda.m1.comp <- cbind(bos.lda.m1.comp,
+                         rbind(bos.lda.m1.train.pc, bos.lda.m1.test.pc),
+                         rbind(bos.lda.m1.train.pi, bos.lda.m1.test.pi))
+
+# Rename rows and columns
+colnames(bos.lda.m1.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(bos.lda.m1.comp, digits = 4) * 100)
+```
+
+\ 
+
+__LDA: Model 2__
+
+```{r bos.lda.m2}
+#------------------------------------------------------------------------------
+# Train Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+bos.lda.m2.train <- lda(crim.median ~ nox +dis +tax +black +lstat +rad.fac,
+                        data = bos, subset = bos.train.rn)
+bos.lda.m2.train
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+bos.lda.m2.train.pred <- predict(bos.lda.m2.train)$post[, 2]
+hist(bos.lda.m2.train.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Training Data")
+mean(bos.lda.m2.train.pred)
+
+#--------------------------------------
+# Assign values of ROC curve on train data
+#--------------------------------------
+# Assign values for ROC curve
+bos.lda.m2.roc <- roc(response = bos$crim.median[bos.train.rn],
+                      predictor = bos.lda.m2.train.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+bos.lda.m2.op.dist <- sqrt((bos.lda.m2.roc$specificities - 1)^2 + 
+                           (bos.lda.m2.roc$sensitivities - 1)^2)
+bos.lda.m2.op.index <- which.min(bos.lda.m2.op.dist)
+bos.lda.m2.op.thresh <- bos.lda.m2.roc$thresholds[bos.lda.m2.op.index]
+print(bos.lda.m2.op.thresh)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(bos.lda.m2.roc, col = "blue", main = "ROC Curve for bos.lda.m2.roc")
+
+# Add mark for optimal threshold
+points(bos.lda.m2.roc$specificities[bos.lda.m2.op.index],
+       bos.lda.m2.roc$sensitivities[bos.lda.m2.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Classify train data based on optimal threshold
+#--------------------------------------
+bos.lda.m2.train.class <- rep("0", length(bos.lda.m2.train.pred))
+bos.lda.m2.train.class[bos.lda.m2.train.pred > bos.lda.m2.op.thresh] <- "1"
+bos.lda.m2.train.class <- as.factor(bos.lda.m2.train.class)
+
+#--------------------------------------
+# Create confusion matrix for train data based on classification
+#--------------------------------------
+bos.lda.m2.train.cm <- table(bos$crim.median[bos.train.rn],
+                             bos.lda.m2.train.class,
+                             dnn = c("Actual", "Predicted"))
+bos.lda.m2.train.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for train data
+#--------------------------------------
+# TP
+bos.lda.m2.train.tp <- bos.lda.m2.train.cm["1", "1"] / 
+                       sum(bos.lda.m2.train.cm["1", ])
+
+# FP
+bos.lda.m2.train.fp <- bos.lda.m2.train.cm["0", "1"] / 
+                       sum(bos.lda.m2.train.cm["0", ])
+
+# Merge the results
+bos.lda.m2.train.tpfp <- cbind(bos.lda.m2.train.tp, bos.lda.m2.train.fp)
+colnames(bos.lda.m2.train.tpfp) <- c("True Positive", "False Positive")
+rownames(bos.lda.m2.train.tpfp) <- "bos.lda.m2.train"
+bos.lda.m2.train.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for train data
+#--------------------------------------
+# Calculate percent correct for train data
+bos.lda.m2.train.pc <- sum(diag(prop.table(bos.lda.m2.train.cm)))
+bos.lda.m2.train.pc
+
+# Calculate percent incorrect for train error
+bos.lda.m2.train.pi <- (1 - sum(diag(prop.table(bos.lda.m2.train.cm))))
+bos.lda.m2.train.pi
+
+# Alternate method (same results)
+# mean(bos.lda.m2.train.class == bos$crim.median[bos.train.rn])
+# mean(bos.lda.m2.train.class != bos$crim.median[bos.train.rn])
+
+#------------------------------------------------------------------------------
+# Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+bos.lda.m2.test.pred <- predict(bos.lda.m2.train,
+                                newdata = bos[!bos.train.rn, ])$post[, 2]
+hist(bos.lda.m2.test.pred, col = "grey",
+     main = paste("Predicted probabilities for: \n", data.name,
+     data.response, sep = ""),
+     sub = "Testing Data")
+mean(bos.lda.m2.test.pred)
+
+#--------------------------------------
+# Classify test data based on optimal threshold
+#--------------------------------------
+bos.lda.m2.test.class <- rep("0", length(bos.lda.m2.test.pred))
+bos.lda.m2.test.class[bos.lda.m2.test.pred > bos.lda.m2.op.thresh] <- "1"
+bos.lda.m2.test.class <- as.factor(bos.lda.m2.test.class)
+
+#--------------------------------------
+# Create confusion matrix for test data based on classification
+#--------------------------------------
+bos.lda.m2.test.cm <- table(bos$crim.median[!bos.train.rn],
+                            bos.lda.m2.test.class,
+                            dnn = c("Actual", "Predicted"))
+bos.lda.m2.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+bos.lda.m2.test.tp <- bos.lda.m2.test.cm["1", "1"] / 
+                      sum(bos.lda.m2.test.cm["1", ])
+
+# FP
+bos.lda.m2.test.fp <- bos.lda.m2.test.cm["0", "1"] / 
+                      sum(bos.lda.m2.test.cm["0", ])
+
+# Merge the results
+bos.lda.m2.test.tpfp <- cbind(bos.lda.m2.test.tp, bos.lda.m2.test.fp)
+colnames(bos.lda.m2.test.tpfp) <- c("True Positive", "False Positive")
+rownames(bos.lda.m2.test.tpfp) <- "bos.lda.m2.test"
+bos.lda.m2.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+bos.lda.m2.test.pc <- sum(diag(prop.table(bos.lda.m2.test.cm)))
+bos.lda.m2.test.pc
+
+# Calculate percent incorrect for test error
+bos.lda.m2.test.pi <- (1 - sum(diag(prop.table(bos.lda.m2.test.cm))))
+bos.lda.m2.test.pi
+
+# Alternate method (same results)
+# mean(bos.lda.m2.test.class == bos$crim.median[!bos.train.rn])
+# mean(bos.lda.m2.test.class != bos$crim.median[!bos.train.rn])
+
+#------------------------------------------------------------------------------
+# Train - Test Compare
+#------------------------------------------------------------------------------
+# Merge TP-FP rates for train and test data
+bos.lda.m2.comp <- rbind(bos.lda.m2.train.tpfp, bos.lda.m2.test.tpfp)
+
+# Merge PC-PI rates for train and test data
+bos.lda.m2.comp <- cbind(bos.lda.m2.comp,
+                         rbind(bos.lda.m2.train.pc, bos.lda.m2.test.pc),
+                         rbind(bos.lda.m2.train.pi, bos.lda.m2.test.pi))
+
+# Rename rows and columns
+colnames(bos.lda.m2.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(bos.lda.m2.comp, digits = 4) * 100)
+```
+
+\ 
+
+__Comments__: Interestingly, both `bos.lda.m1.train` and `bos.lda.m2.train` had the same percentages for _Correct_ and _Incorrect_. Perhaps even more interesting is both `bos.lda.m1.test` and `bos.lda.m2.test` had the same percentages for _True Positive_, _False Positivie_, _Correct_, and _Incorrect_. The code was double-checked and no errors or typos were spotted. 
+
+```{r bos.lda.comp}
+# Compare TP-FP and PC-PI across models
+bos.lda.comp <- rbind(bos.lda.m1.comp, bos.lda.m2.comp)
+
+# Print results, expressed in percentages
+(round(bos.lda.comp, digits = 4) * 100)
+```
+
+\ 
+
+#### KNN Models
+
+__KNN: Model 1__
+
+```{r bos.knn.m1}
+#------------------------------------------------------------------------------
+# Create matrix of predictor variables, include any interations
+#------------------------------------------------------------------------------
+bos.knn.m1.names <- cbind(bos$indus, bos$nox, bos$age, bos$dis, bos$tax,
+                          bos$rad.fac)
+
+#------------------------------------------------------------------------------
+# Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Predict using k = 9
+bos.knn.m1.test.pred <- knn(bos.knn.m1.names[bos.train.rn, ],
+                            bos.knn.m1.names[!bos.train.rn, ],
+                            bos$crim.median[bos.train.rn], k = 9, prob = T)
+
+#--------------------------------------
+# Create confusion matrix for test data
+#--------------------------------------
+bos.knn.m1.test.cm <- table(bos$crim.median[!bos.train.rn],
+                            bos.knn.m1.test.pred,
+                            dnn = c("Actual", "Predicted"))
+bos.knn.m1.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+bos.knn.m1.test.tp <- bos.knn.m1.test.cm["1", "1"] / 
+                      sum(bos.knn.m1.test.cm["1", ])
+
+# FP
+bos.knn.m1.test.fp <- bos.knn.m1.test.cm["0", "1"] / 
+                      sum(bos.knn.m1.test.cm["0", ])
+
+# Merge the results
+bos.knn.m1.test.tpfp <- cbind(bos.knn.m1.test.tp, bos.knn.m1.test.fp)
+colnames(bos.knn.m1.test.tpfp) <- c("True Positive", "False Positive")
+rownames(bos.knn.m1.test.tpfp) <- "bos.knn.m1.test"
+bos.knn.m1.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+bos.knn.m1.test.pc <- sum(diag(prop.table(bos.knn.m1.test.cm)))
+bos.knn.m1.test.pc
+
+# Calculate percent incorrect for test error
+bos.knn.m1.test.pi <- (1 - sum(diag(prop.table(bos.knn.m1.test.cm))))
+bos.knn.m1.test.pi
+
+# Alternate method (same results)
+# mean(bos.knn.m1.test.pred == bos$crim.median[!bos.train.rn])
+# mean(bos.knn.m1.test.pred != bos$crim.median[!bos.train.rn])
+
+#------------------------------------------------------------------------------
+# Model performance on test data
+#------------------------------------------------------------------------------
+# Merge TP-FP and PC-PI rates for test data
+bos.knn.m1.comp <- cbind(bos.knn.m1.test.tpfp, bos.knn.m1.test.pc,
+                         bos.knn.m1.test.pi)
+
+# Rename rows and columns
+colnames(bos.knn.m1.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(bos.knn.m1.comp, digits = 4) * 100)
+```
+
+\ 
+
+__KNN: Model 2__
+
+```{r bos.knn.m2}
+#------------------------------------------------------------------------------
+# Create matrix of predictor variables, include any interations
+#------------------------------------------------------------------------------
+bos.knn.m2.names <- cbind(bos$nox, bos$dis, bos$tax, bos$black, bos$lstat,
+                          bos$rad.fac)
+
+#------------------------------------------------------------------------------
+# Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Predict using k = 9
+bos.knn.m2.test.pred <- knn(bos.knn.m2.names[bos.train.rn, ],
+                            bos.knn.m2.names[!bos.train.rn, ],
+                            bos$crim.median[bos.train.rn], k = 9, prob = T)
+
+#--------------------------------------
+# Create confusion matrix for test data
+#--------------------------------------
+bos.knn.m2.test.cm <- table(bos$crim.median[!bos.train.rn],
+                            bos.knn.m2.test.pred,
+                            dnn = c("Actual", "Predicted"))
+bos.knn.m2.test.cm
+
+#--------------------------------------
+# Calculate True Positive (TP) and False Positive (FP) rates for test data
+#--------------------------------------
+# TP
+bos.knn.m2.test.tp <- bos.knn.m2.test.cm["1", "1"] / 
+                      sum(bos.knn.m2.test.cm["1", ])
+
+# FP
+bos.knn.m2.test.fp <- bos.knn.m2.test.cm["0", "1"] / 
+                      sum(bos.knn.m2.test.cm["0", ])
+
+# Merge the results
+bos.knn.m2.test.tpfp <- cbind(bos.knn.m2.test.tp, bos.knn.m2.test.fp)
+colnames(bos.knn.m2.test.tpfp) <- c("True Positive", "False Positive")
+rownames(bos.knn.m2.test.tpfp) <- "bos.knn.m2.test"
+bos.knn.m2.test.tpfp
+
+#--------------------------------------
+# Calculate percent correct and error for test data
+#--------------------------------------
+# Calculate percent correct for test data
+bos.knn.m2.test.pc <- sum(diag(prop.table(bos.knn.m2.test.cm)))
+bos.knn.m2.test.pc
+
+# Calculate percent incorrect for test error
+bos.knn.m2.test.pi <- (1 - sum(diag(prop.table(bos.knn.m2.test.cm))))
+bos.knn.m2.test.pi
+
+# Alternate method (same results)
+# mean(bos.knn.m2.test.pred == bos$crim.median[!bos.train.rn])
+# mean(bos.knn.m2.test.pred != bos$crim.median[!bos.train.rn])
+
+#------------------------------------------------------------------------------
+# Model performance on test data
+#------------------------------------------------------------------------------
+# Merge TP-FP and PC-PI rates for test data
+bos.knn.m2.comp <- cbind(bos.knn.m2.test.tpfp, bos.knn.m2.test.pc,
+                         bos.knn.m2.test.pi)
+
+# Rename rows and columns
+colnames(bos.knn.m2.comp)[3:4] <- c("Correct", "Incorrect")
+
+# Print results, expressed in percentages
+(round(bos.knn.m2.comp, digits = 4) * 100)
+```
+
+\ 
+
+__Comments__: For the KNN models, `bos.knn.m2.test` had a lower _True Positive_ rate than `bos.knn.m1.test`, but otherwise performed better overall, having a lower _False Positive_ rate, higher _Correct_ rate, and lower _Incorrect_ rate.
+
+```{r bos.knn.comp}
+# Compare TP-FP and PC-PI across models
+bos.knn.comp <- rbind(bos.knn.m1.comp, bos.knn.m2.comp)
+
+# Print results, expressed in percentages
+(round(bos.knn.comp, digits = 4) * 100)
+```
+
+\ 
+
+#### Conclusion
+
+Going strictly by the _Incorrect_ rate on the `test` models, the LDA models performed best. The GLM and KNN models had double-digit (or very close to double-digit) _False Positive_ rates.
+
+```{r bos.conclusion}
+# Compare TP-FP and PC-PI across models
+bos.comp <- rbind(bos.glm.comp, bos.lda.comp, bos.knn.comp)
+
+# Print results, expressed in percentages
+(round(bos.comp, digits = 4) * 100)
+```
+
+\ 
+
+```{r FIN}
+# FIN
+
+# Session info
+sessionInfo()
+```
