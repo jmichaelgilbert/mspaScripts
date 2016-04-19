@@ -1063,7 +1063,7 @@ mse.comp
     
     At first glance, it seems the 10 k-fold cross-validation model with all predictors (seven due to the removal of the factor variable `name`) is the best to make predictions on. However, MSE is just one measure of error. Further investigation should be done to determine the presence of multicollinearity by examining the VIFs.
     
-```{r FIN, eval = F}
+```{r FIN}
 # FIN
 
 # Session info
