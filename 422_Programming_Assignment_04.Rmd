@@ -1,0 +1,1301 @@
+---
+title: '422_Programming_Assignment_04'
+author: 'Michael Gilbert'
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document: default
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+Workspace cleanup and prep:
+
+```{r setup.R, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(forecast)
+library(glmnet)
+library(ISLR)
+library(knitr)
+library(leaps)
+library(pls)
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+```{r Functions}
+# Functions
+
+#--------------------------------------
+# fit()
+#--------------------------------------
+# Function to add MSE to other measures from forecast::accuracy
+fit <- function(f, x){
+    temp <- data.frame(forecast::accuracy(f, x), 
+                       forecast::accuracy(f, x)[, 2]^2)
+    temp <- temp[, -c(1)]
+    colnames(temp)[6] <- "MSE"
+    temp <- temp[c(6, 1, 2, 3, 4, 5)]
+    print(temp)
+}
+```
+
+## ISLR, Section 6.8
+### Exercise 8 (p. 276 of PDF)
+
+In this exercise, we will generate simulated data, and will then use this data to perform best subset selection.
+
+(a) Use the `rnorm()` function to generate a predictor $X$ of length $n = 100$, as well as a noise vector $\epsilon$ of length $n = 100$.
+    
+    \ 
+    
+```{r Ex8a1, indent = "    "}
+# Set seed for reproducibility
+set.seed(123)
+
+# Generate random normal variable 'x1' of length 100
+x1 <- rnorm(100, mean = 0, sd = 1)
+
+# Assign to a data.frame
+df <- as.data.frame(x1)
+
+for (i in 1:10){
+    # Add variables to data.frame
+    df[paste("x", i, sep = "")] <- x1**i
+}
+
+# Clean up
+rm(x1); rm(i)
+
+# Generate random normal noise variable epsilon of length 100
+er <- rnorm(100, mean = 0, sd = 1)
+```
+    
+    \ 
+    
+(b) Generate a response vector $Y$ of length $n = 100$ according to the model
+    
+    $$Y = \beta_0 + \beta_1X + \beta_2X^{2} + \beta_3X^{3} + \epsilon,$$
+    
+    where $\beta_0,\ \beta_1,\ \beta_2,$ and $\beta_3$ are constants of your choice. 
+    
+    \ 
+    
+```{r Ex8b1, indent = "    "}
+# Set seed for reproducibility
+set.seed(123)
+
+for (i in 1:3){
+    # Generate random normal coefficient 'b0' of length 100
+    b0 <- rnorm(1, mean = 0, sd = 1)
+    # Generate additional versions of 'b'
+    assign(paste("b", i, sep = ""), b0**i)
+    # Remove 'i'
+    rm(i)
+}
+
+# Assign response vector 'y'
+y <- (b0 + b1*df[,"x1"] + b2*df[,"x2"] + b3*df[,"x3"] + er)
+
+# Verify length
+length(y)
+```
+    
+    \ 
+    
+(c) Use the `regsubsets()` function to perform best subset selection in order to choose the best model containing the predictors $X,\ X^{2},\ ...,\ X^{10}$. What is the best model obtained according to $C_p$, $BIC$, and $Adjusted R^{2}$? Show some plots to provide evidence for your answer, and report the coefficients of the best model obtained. Note you will need to use the `data.frame()` function to create a single data set containing both $X$ and $Y$.
+    
+    \ 
+    
+```{r Ex8c1, indent = "    "}
+#--------------------------------------
+# Model Prep
+#--------------------------------------
+# Merge 'y' with data.frame(df)
+df <- data.frame(df, y)
+
+# Determine best subset selection for predictors
+# Subtract one to account for the response variable in the data.frame(df)
+regfit.all <- regsubsets(y ~ ., data = df, nvmax = (ncol(df)-1))
+
+# Assign summary
+regfit.all.summary <- summary(regfit.all)
+
+# View available names for summary
+names(regfit.all.summary)
+```
+    
+```{r include = F}
+par(mfcol = c(1, 2))
+```
+    
+    \ 
+    
+    #### Mallows' Cp
+    
+```{r Ex8c2, indent = "    ", fig.width = 8}
+#--------------------------------------
+# Mallows' Cp
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.all.cp.val <- min(regfit.all.summary$cp)
+regfit.all.cp.var <- which.min(regfit.all.summary$cp)
+
+# Plot of Cp criterion and number of variables
+plot(regfit.all.summary$cp, type = "l", 
+     main = "Best Subset Selection: 
+     Mallows' Cp",
+     sub = "(lower Cp is better)",
+     xlab = "Number of Variables",
+     ylab = "Mallows' Cp")
+points(regfit.all.summary$cp, pch = 21, bg = "grey")
+points(regfit.all.cp.var, regfit.all.cp.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Cp
+plot(regfit.all, scale = "Cp", 
+     main = "Comparison of possible models: 
+     Mallows' Cp")
+
+# Print coefficients of best subset model
+coef(regfit.all, regfit.all.cp.var)
+```
+    
+    \ 
+    
+    #### Bayesian Information Criterion (BIC)
+    
+```{r Ex8c3, indent = "    ", fig.width = 8}
+#--------------------------------------
+# Bayesian Information Criterion (BIC)
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.all.bic.val <- min(regfit.all.summary$bic)
+regfit.all.bic.var <- which.min(regfit.all.summary$bic)
+
+# Plot of BIC criterion and number of variables
+plot(regfit.all.summary$bic, type = "l", 
+     main = "Best Subset Selection: 
+     Bayesian Information Criteria (BIC)",
+     sub = "(lower BIC is better)",
+     xlab = "Number of Variables",
+     ylab = "BIC")
+points(regfit.all.summary$bic, pch = 21, bg = "grey")
+points(regfit.all.bic.var, regfit.all.bic.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by BIC
+plot(regfit.all, scale = "bic",
+     main = "Comparison of possible models: 
+     Bayesian Information Criteria (BIC)")
+
+# Print coefficients of best subset model
+coef(regfit.all, regfit.all.bic.var)
+```
+    
+    \ 
+    
+    #### Adjusted R-squared
+    
+```{r Ex8c4, indent = "    ", fig.width = 8}
+#--------------------------------------
+# Adjusted R-squared
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.all.adjr2.val <- max(regfit.all.summary$adjr2)
+regfit.all.adjr2.var <- which.max(regfit.all.summary$adjr2)
+
+# Plot of Adjusted R-squared criterion and number of variables
+plot(regfit.all.summary$adjr2, type = "l", 
+     main = "Best Subset Selection: 
+     Adjusted R-squared",
+     sub = "(higher Adjusted R-squared is better)",
+     xlab = "Number of Variables",
+     ylab = "Adjusted R-squared")
+points(regfit.all.summary$adjr2, pch = 21, bg = "grey")
+points(regfit.all.adjr2.var, regfit.all.adjr2.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Adjusted R-squared
+plot(regfit.all, scale = "adjr2",
+     main = "Comparison of possible models: 
+     Adjusted R-squared")
+
+# Print coefficients of best subset model
+coef(regfit.all, regfit.all.adjr2.var)
+```
+    
+```{r include = F}
+par(mfcol = c(1, 1))
+```
+
+    \ 
+    
+    __Comments__: The best model selected in all cases used two variables. Metrics used in this evaluation include: $C_p$ (lower is better), $BIC$ (lower is better), and $Adjusted R^{2}$ (higher is better). The resulting model is:
+    
+    $$\hat{Y} = 1.497941 - 0.642949X + 3.804838X^{3}$$
+    
+    \ 
+    
+(d) Repeat (c), using forward stepwise selection and also using backwards stepwise selection. How does your answer compare to the results in (c)?
+    
+    \ 
+    
+```{r include = F}
+par(mfcol = c(1, 2))
+```
+    
+    #### Forward Stepwise
+    
+```{r Ex8d1, indent = "    ", fig.width = 8}
+#------------------------------------------------------------------------------
+# Forward Stepwise
+#------------------------------------------------------------------------------
+# Determine best subset selection for predictors
+regfit.fwd <- regsubsets(y ~ ., data = df, nvmax = (ncol(df)-1),
+                         method = "forward")
+
+# Assign summary
+regfit.fwd.summary <- summary(regfit.fwd)
+
+#--------------------------------------
+# Mallows' Cp
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.fwd.cp.val <- min(regfit.fwd.summary$cp)
+regfit.fwd.cp.var <- which.min(regfit.fwd.summary$cp)
+
+# Plot of Cp criterion and number of variables
+plot(regfit.fwd.summary$cp, type = "l", 
+     main = "Forward Selection: 
+     Mallows' Cp",
+     sub = "(lower Cp is better)",
+     xlab = "Number of Variables",
+     ylab = "Mallows' Cp")
+points(regfit.fwd.summary$cp, pch = 21, bg = "grey")
+points(regfit.fwd.cp.var, regfit.fwd.cp.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Cp
+plot(regfit.fwd, scale = "Cp",
+     main = "Comparison of possible models: 
+     Mallows' Cp")
+
+# Print coefficients of best subset model
+coef(regfit.fwd, regfit.fwd.cp.var)
+
+#--------------------------------------
+# Bayesian Information Criterion (BIC)
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.fwd.bic.val <- min(regfit.fwd.summary$bic)
+regfit.fwd.bic.var <- which.min(regfit.fwd.summary$bic)
+
+# Plot of BIC criterion and number of variables
+plot(regfit.fwd.summary$bic, type = "l", 
+     main = "Forward Selection: 
+     Bayesian Information Criteria (BIC)",
+     sub = "(lower BIC is better)",
+     xlab = "Number of Variables",
+     ylab = "BIC")
+points(regfit.fwd.summary$bic, pch = 21, bg = "grey")
+points(regfit.fwd.bic.var, regfit.fwd.bic.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by BIC
+plot(regfit.fwd, scale = "bic",
+     main = "Comparison of possible models: 
+     Bayesian Information Criteria (BIC)")
+
+# Print coefficients of best subset model
+coef(regfit.fwd, regfit.fwd.bic.var)
+
+#--------------------------------------
+# Adjusted R-squared
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.fwd.adjr2.val <- max(regfit.fwd.summary$adjr2)
+regfit.fwd.adjr2.var <- which.max(regfit.fwd.summary$adjr2)
+
+# Plot of Adjusted R-squared criterion and number of variables
+plot(regfit.fwd.summary$adjr2, type = "l", 
+     main = "Forward Selection: 
+     Adjusted R-squared",
+     sub = "(higher Adjusted R-squared is better)",
+     xlab = "Number of Variables",
+     ylab = "Adjusted R-squared")
+points(regfit.fwd.summary$adjr2, pch = 21, bg = "grey")
+points(regfit.fwd.adjr2.var, regfit.fwd.adjr2.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Adjusted R-squared
+plot(regfit.fwd, scale = "adjr2",
+     main = "Comparison of possible models: 
+     Adjusted R-squared")
+
+# Print coefficients of best subset model
+coef(regfit.fwd, regfit.fwd.adjr2.var)
+```
+    
+    \ 
+    
+    #### Backward Stepwise
+    
+```{r Ex8d2, indent = "    ", fig.width = 8}
+#------------------------------------------------------------------------------
+# Backward Stepwise
+#------------------------------------------------------------------------------
+# Determine best subset selection for predictors
+regfit.bwd <- regsubsets(y ~ ., data = df, nvmax = (ncol(df)-1),
+                         method = "backward")
+
+# Assign summary
+regfit.bwd.summary <- summary(regfit.bwd)
+
+#--------------------------------------
+# Mallows' Cp
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.bwd.cp.val <- min(regfit.bwd.summary$cp)
+regfit.bwd.cp.var <- which.min(regfit.bwd.summary$cp)
+
+# Plot of Cp criterion and number of variables
+plot(regfit.bwd.summary$cp, type = "l", 
+     main = "Backward Selection: 
+     Mallows' Cp",
+     sub = "(lower Cp is better)",
+     xlab = "Number of Variables",
+     ylab = "Mallows' Cp")
+points(regfit.bwd.summary$cp, pch = 21, bg = "grey")
+points(regfit.bwd.cp.var, regfit.bwd.cp.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Cp
+plot(regfit.bwd, scale = "Cp",
+     main = "Comparison of possible models: 
+     Mallows' Cp")
+
+# Print coefficients of best subset model
+coef(regfit.bwd, regfit.bwd.cp.var)
+
+#--------------------------------------
+# Bayesian Information Criterion (BIC)
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.bwd.bic.val <- min(regfit.bwd.summary$bic)
+regfit.bwd.bic.var <- which.min(regfit.bwd.summary$bic)
+
+# Plot of BIC criterion and number of variables
+plot(regfit.bwd.summary$bic, type = "l", 
+     main = "Backward Selection: 
+     Bayesian Information Criteria (BIC)",
+     sub = "(lower BIC is better)",
+     xlab = "Number of Variables",
+     ylab = "BIC")
+points(regfit.bwd.summary$bic, pch = 21, bg = "grey")
+points(regfit.bwd.bic.var, regfit.bwd.bic.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by BIC
+plot(regfit.bwd, scale = "bic",
+     main = "Comparison of possible models: 
+     Bayesian Information Criteria (BIC)")
+
+# Print coefficients of best subset model
+coef(regfit.bwd, regfit.bwd.bic.var)
+
+#--------------------------------------
+# Adjusted R-squared
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.bwd.adjr2.val <- max(regfit.bwd.summary$adjr2)
+regfit.bwd.adjr2.var <- which.max(regfit.bwd.summary$adjr2)
+
+# Plot of Adjusted R-squared criterion and number of variables
+plot(regfit.bwd.summary$adjr2, type = "l", 
+     main = "Backward Selection: 
+     Adjusted R-squared",
+     sub = "(higher Adjusted R-squared is better)",
+     xlab = "Number of Variables",
+     ylab = "Adjusted R-squared")
+points(regfit.bwd.summary$adjr2, pch = 21, bg = "grey")
+points(regfit.bwd.adjr2.var, regfit.bwd.adjr2.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Adjusted R-squared
+plot(regfit.bwd, scale = "adjr2",
+     main = "Comparison of possible models: 
+     Adjusted R-squared")
+
+# Print coefficients of best subset model
+coef(regfit.bwd, regfit.bwd.adjr2.var)
+```
+    
+    \ 
+    
+    #### Sequential
+    
+```{r Ex8d3, indent = "    ", fig.width = 8}
+#------------------------------------------------------------------------------
+# Sequential
+#------------------------------------------------------------------------------
+# Determine best subset selection for predictors
+regfit.seq <- regsubsets(y ~ ., data = df, nvmax = (ncol(df)-1),
+                         method = "seqrep")
+
+# Assign summary
+regfit.seq.summary <- summary(regfit.seq)
+
+#--------------------------------------
+# Mallows' Cp
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.seq.cp.val <- min(regfit.seq.summary$cp)
+regfit.seq.cp.var <- which.min(regfit.seq.summary$cp)
+
+# Plot of Cp criterion and number of variables
+plot(regfit.seq.summary$cp, type = "l", 
+     main = "Sequential Selection: 
+     Mallows' Cp",
+     sub = "(lower Cp is better)",
+     xlab = "Number of Variables",
+     ylab = "Mallows' Cp")
+points(regfit.seq.summary$cp, pch = 21, bg = "grey")
+points(regfit.seq.cp.var, regfit.seq.cp.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Cp
+plot(regfit.seq, scale = "Cp",
+     main = "Comparison of possible models: 
+     Mallows' Cp")
+
+# Print coefficients of best subset model
+coef(regfit.seq, regfit.seq.cp.var)
+
+#--------------------------------------
+# Bayesian Information Criterion (BIC)
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.seq.bic.val <- min(regfit.seq.summary$bic)
+regfit.seq.bic.var <- which.min(regfit.seq.summary$bic)
+
+# Plot of BIC criterion and number of variables
+plot(regfit.seq.summary$bic, type = "l", 
+     main = "Sequential Selection: 
+     Bayesian Information Criteria (BIC)",
+     sub = "(lower BIC is better)",
+     xlab = "Number of Variables",
+     ylab = "BIC")
+points(regfit.seq.summary$bic, pch = 21, bg = "grey")
+points(regfit.seq.bic.var, regfit.seq.bic.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by BIC
+plot(regfit.seq, scale = "bic",
+     main = "Comparison of possible models: 
+     Bayesian Information Criteria (BIC)")
+
+# Print coefficients of best subset model
+coef(regfit.seq, regfit.seq.bic.var)
+
+#--------------------------------------
+# Adjusted R-squared
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.seq.adjr2.val <- max(regfit.seq.summary$adjr2)
+regfit.seq.adjr2.var <- which.max(regfit.seq.summary$adjr2)
+
+# Plot of Adjusted R-squared criterion and number of variables
+plot(regfit.seq.summary$adjr2, type = "l", 
+     main = "Sequential Selection: 
+     Adjusted R-squared",
+     sub = "(higher Adjusted R-squared is better)",
+     xlab = "Number of Variables",
+     ylab = "Adjusted R-squared")
+points(regfit.seq.summary$adjr2, pch = 21, bg = "grey")
+points(regfit.seq.adjr2.var, regfit.seq.adjr2.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Adjusted R-squared
+plot(regfit.seq, scale = "adjr2",
+     main = "Comparison of possible models: 
+     Adjusted R-squared")
+
+# Print coefficients of best subset model
+coef(regfit.seq, regfit.seq.adjr2.var)
+```
+    
+    \ 
+    
+    #### Exhaustive
+    
+```{r Ex8d4, indent = "    ", fig.width = 8}
+#------------------------------------------------------------------------------
+# Exhaustive
+#------------------------------------------------------------------------------
+# Determine best subset selection for predictors
+regfit.exh <- regsubsets(y ~ ., data = df, nvmax = (ncol(df)-1),
+                         method = "exhaustive")
+
+# Assign summary
+regfit.exh.summary <- summary(regfit.exh)
+
+#--------------------------------------
+# Mallows' Cp
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.exh.cp.val <- min(regfit.exh.summary$cp)
+regfit.exh.cp.var <- which.min(regfit.exh.summary$cp)
+
+# Plot of Cp criterion and number of variables
+plot(regfit.exh.summary$cp, type = "l", 
+     main = "Exhaustive Selection: 
+     Mallows' Cp",
+     sub = "(lower Cp is better)",
+     xlab = "Number of Variables",
+     ylab = "Mallows' Cp")
+points(regfit.exh.summary$cp, pch = 21, bg = "grey")
+points(regfit.exh.cp.var, regfit.exh.cp.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Cp
+plot(regfit.exh, scale = "Cp",
+     main = "Comparison of possible models: 
+     Mallows' Cp")
+
+# Print coefficients of best subset model
+coef(regfit.exh, regfit.exh.cp.var)
+
+#--------------------------------------
+# Bayesian Information Criterion (BIC)
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.exh.bic.val <- min(regfit.exh.summary$bic)
+regfit.exh.bic.var <- which.min(regfit.exh.summary$bic)
+
+# Plot of BIC criterion and number of variables
+plot(regfit.exh.summary$bic, type = "l", 
+     main = "Exhaustive Selection: 
+     Bayesian Information Criteria (BIC)",
+     sub = "(lower BIC is better)",
+     xlab = "Number of Variables",
+     ylab = "BIC")
+points(regfit.exh.summary$bic, pch = 21, bg = "grey")
+points(regfit.exh.bic.var, regfit.exh.bic.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by BIC
+plot(regfit.exh, scale = "bic",
+     main = "Comparison of possible models: 
+     Bayesian Information Criteria (BIC)")
+
+# Print coefficients of best subset model
+coef(regfit.exh, regfit.exh.bic.var)
+
+#--------------------------------------
+# Adjusted R-squared
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.exh.adjr2.val <- max(regfit.exh.summary$adjr2)
+regfit.exh.adjr2.var <- which.max(regfit.exh.summary$adjr2)
+
+# Plot of Adjusted R-squared criterion and number of variables
+plot(regfit.exh.summary$adjr2, type = "l", 
+     main = "Exhaustive Selection: 
+     Adjusted R-squared",
+     sub = "(higher Adjusted R-squared is better)",
+     xlab = "Number of Variables",
+     ylab = "Adjusted R-squared")
+points(regfit.exh.summary$adjr2, pch = 21, bg = "grey")
+points(regfit.exh.adjr2.var, regfit.exh.adjr2.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Adjusted R-squared
+plot(regfit.exh, scale = "adjr2",
+     main = "Comparison of possible models: 
+     Adjusted R-squared")
+
+# Print coefficients of best subset model
+coef(regfit.exh, regfit.exh.adjr2.var)
+```
+    
+```{r include = F}
+par(mfcol = c(1, 1))
+```
+    
+    \ 
+    
+    __Comments__: The model chosen in _Forward Stepwise_, _Backward Stepwise_, and _Exhaustive_ all picked the same number of variables - $2$ - under each metric. The model chosen from _Sequential_ picked a $3$ variable model under $C_p$ and $BIC$, and a $7$ variable model under $Adjusted R^{2}$. Metrics used in this evaluation include: $C_p$ (lower is better), $BIC$ (lower is better), and $Adjusted R^{2}$ (higher is better). 
+    
+    _Note_: the coefficients for each selection method and each metric are included in the output above.
+    
+```{r Ex8d6, indent = "    "}
+# Compare number of variables and metric value across models
+regfit.comp <- cbind(rbind(regfit.fwd.cp.var, regfit.bwd.cp.var,
+                           regfit.seq.cp.var, regfit.exh.cp.var),
+                     rbind(regfit.fwd.cp.val, regfit.bwd.cp.val,
+                           regfit.seq.cp.val, regfit.exh.cp.val),
+                     rbind(regfit.fwd.bic.var, regfit.bwd.bic.var,
+                           regfit.seq.bic.var, regfit.exh.bic.var),
+                     rbind(regfit.fwd.bic.val, regfit.bwd.bic.val,
+                           regfit.seq.bic.val, regfit.exh.bic.val),
+                     rbind(regfit.fwd.adjr2.var, regfit.bwd.adjr2.var,
+                           regfit.seq.adjr2.var, regfit.exh.adjr2.var),
+                     rbind(regfit.fwd.adjr2.val, regfit.bwd.adjr2.val,
+                           regfit.seq.adjr2.val, regfit.exh.adjr2.val))
+
+# Assign rownames
+rownames(regfit.comp) <- c("Forward Stepwise", "Backward Stepwise", 
+                           "Sequential", "Exhaustive")
+
+# Assign colnames
+colnames(regfit.comp) <- c("Cp-Var", "Cp-Val", "BIC-Var", "BIC-Val",
+                           "AdjR2-Var", "AdjR2-Val")
+
+# Print results
+round(regfit.comp, digits = 4)
+```
+    
+    \ 
+    
+(e) Now fit a lasso model to the simulated data, again using $X,\ X^{2},\ ...,\ X^{10}$ as predictors. Use cross-validation to select the optimal value of $\lambda$. Create plots of the cross-validation error as a function of $\lambda$. Report the resulting coefficient estimates, and discuss the results obtained.
+    
+    \ 
+    
+```{r Ex8e1, indent = "    ", fig.height = 4.75, fig.width = 5.75}
+#--------------------------------------
+# Model Prep
+#--------------------------------------
+# For {glmnet}, must use predictors as matrix and response as vector
+# Use [, -1] to drop the intercept (created by model.matrix)
+lasso.x <- model.matrix(y ~ ., data = df)[, -1]
+lasso.y <- df$y
+
+#--------------------------------------
+# Range of Lambda Values - Default
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Conduct k-fold cross validation (default k = 10)
+lasso.cv <- cv.glmnet(lasso.x, lasso.y)
+
+# Create plots
+plot(lasso.cv)
+plot(lasso.cv$glmnet.fit, xvar = "lambda", label = T)
+plot(lasso.cv$glmnet.fit, xvar = "dev", label = T)
+
+# View coefficients
+coef(lasso.cv)
+
+# Assign and view optimal value of lambda
+lasso.cv.lambda <- lasso.cv$lambda.min
+lasso.cv.lambda
+
+# View coefficients under fixed lambda
+predict(lasso.cv, type = "coefficients", s = lasso.cv.lambda)
+
+#--------------------------------------
+# Range of Lambda Values - Grid
+#--------------------------------------
+# Create grid for range of lambda values
+lasso.grid <- 10^seq(10, -2, length = 100)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Conduct k-fold cross validation (default k = 10)
+lasso.cv.grid <- cv.glmnet(lasso.x, lasso.y, lambda = lasso.grid)
+
+# Create plots
+plot(lasso.cv.grid)
+plot(lasso.cv.grid$glmnet.fit, xvar = "lambda", label = T)
+plot(lasso.cv.grid$glmnet.fit, xvar = "dev", label = T)
+
+# View coefficients
+coef(lasso.cv.grid)
+
+# Assign and view optimal value of lambda
+lasso.cv.grid.lambda <- lasso.cv.grid$lambda.min
+lasso.cv.grid.lambda
+
+# View coefficients under fixed lambda
+predict(lasso.cv.grid, type = "coefficients", s = lasso.cv.grid.lambda)
+```
+    
+    \ 
+    
+    __Comments__: The coefficients varied slightly between the first model, which used the default value of $\lambda$ in the `glmnet()` function, and the second model, which used a grid of values for possible $\lambda$ selection. At first glance, the plots of the model which used the grid appear wildly different. However, that is because the $\log(\lambda)$ values have a much larger range of values. The optimal value of $\lambda$ was $0.1085779$ in the non-grid model, and $0.1232847$ in the grid model.
+    
+    \ 
+    
+(f) Now generate a response vector $Y$ according to the model
+    
+    $$Y = \beta_0 + \beta_7X^{7} + \epsilon,$$
+    
+    and perform best subset selection and the lasso. Discuss the results obtained.
+    
+    \ 
+    
+```{r include = F}
+par(mfcol = c(1, 2))
+```
+    
+```{r Ex8f1, indent = "    ", fig.width = 8}
+#----------------------------------------------------------------------------
+# Data Prep
+#----------------------------------------------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Generate random normal coefficient 'b7' of length 100
+b7 <- rnorm(1, mean = 0, sd = 1)
+
+# Assign response vector 'y'
+y <- (b0 + b7*df[,"x7"] + er)
+
+# Drop old 'y' from data.frame(df)
+df <- subset(df, select = -y)
+
+# Merge new 'y' with data.frame(df)
+df <- data.frame(df, y)
+
+#------------------------------------------------------------------------------
+# Best Subset Selection
+#------------------------------------------------------------------------------
+
+# Determine best subset selection for predictors
+regfit.all <- regsubsets(y ~ ., data = df, nvmax = (ncol(df)-1))
+
+# Assign summary
+regfit.all.summary <- summary(regfit.all)
+
+#--------------------------------------
+# Mallows' Cp
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.all.cp.val <- min(regfit.all.summary$cp)
+regfit.all.cp.var <- which.min(regfit.all.summary$cp)
+
+# Plot of Cp criterion and number of variables
+plot(regfit.all.summary$cp, type = "l", 
+     main = "Best Subset Selection: 
+     Mallows' Cp",
+     sub = "(lower Cp is better)",
+     xlab = "Number of Variables",
+     ylab = "Mallows' Cp")
+points(regfit.all.summary$cp, pch = 21, bg = "grey")
+points(regfit.all.cp.var, regfit.all.cp.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Cp
+plot(regfit.all, scale = "Cp",
+     main = "Comparison of possible models: 
+     Mallows' Cp")
+
+# Print coefficients of best subset model
+coef(regfit.all, regfit.all.cp.var)
+
+#--------------------------------------
+# Bayesian Information Criterion (BIC)
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.all.bic.val <- min(regfit.all.summary$bic)
+regfit.all.bic.var <- which.min(regfit.all.summary$bic)
+
+# Plot of BIC criterion and number of variables
+plot(regfit.all.summary$bic, type = "l", 
+     main = "Best Subset Selection: 
+     Bayesian Information Criteria (BIC)",
+     sub = "(lower BIC is better)",
+     xlab = "Number of Variables",
+     ylab = "BIC")
+points(regfit.all.summary$bic, pch = 21, bg = "grey")
+points(regfit.all.bic.var, regfit.all.bic.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by BIC
+plot(regfit.all, scale = "bic",
+     main = "Comparison of possible models: 
+     Bayesian Information Criteria (BIC)")
+
+# Print coefficients of best subset model
+coef(regfit.all, regfit.all.bic.var)
+
+#--------------------------------------
+# Adjusted R-squared
+#--------------------------------------
+# Store minimum value and number of variables
+regfit.all.adjr2.val <- max(regfit.all.summary$adjr2)
+regfit.all.adjr2.var <- which.max(regfit.all.summary$adjr2)
+
+# Plot of Adjusted R-squared criterion and number of variables
+plot(regfit.all.summary$adjr2, type = "l", 
+     main = "Best Subset Selection: 
+     Adjusted R-squared",
+     sub = "(higher Adjusted R-squared is better)",
+     xlab = "Number of Variables",
+     ylab = "Adjusted R-squared")
+points(regfit.all.summary$adjr2, pch = 21, bg = "grey")
+points(regfit.all.adjr2.var, regfit.all.adjr2.val, pch = 21, bg = "red")
+
+# Schematic plot of variables selected by Adjusted R-squared
+plot(regfit.all, scale = "adjr2",
+     main = "Comparison of possible models: 
+     Adjusted R-squared")
+
+# Print coefficients of best subset model
+coef(regfit.all, regfit.all.adjr2.var)
+```
+
+```{r include = F}
+par(mfcol = c(1, 1))
+```
+
+```{r Ex8f2, indent = "    ", fig.height = 4.75, fig.width = 5.75}
+#------------------------------------------------------------------------------
+# Lasso Selection
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model Prep
+#--------------------------------------
+# For {glmnet}, must use predictors as matrix and response as vector
+# Use [, -1] to drop the intercept (created by model.matrix)
+lasso.x <- model.matrix(y ~ ., data = df)[, -1]
+lasso.y <- df$y
+
+#--------------------------------------
+# Range of Lambda Values - Default
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Conduct k-fold cross validation (default k = 10)
+lasso.cv <- cv.glmnet(lasso.x, lasso.y)
+
+# Create plots
+plot(lasso.cv)
+plot(lasso.cv$glmnet.fit, xvar = "lambda", label = T)
+plot(lasso.cv$glmnet.fit, xvar = "dev", label = T)
+
+# View coefficients
+coef(lasso.cv)
+
+# Assign and view optimal value of lambda
+lasso.cv.lambda <- lasso.cv$lambda.min
+lasso.cv.lambda
+
+# View coefficients under fixed lambda
+predict(lasso.cv, type = "coefficients", s = lasso.cv.lambda)
+```
+    
+    \ 
+     
+    __Comments__: Under Best Subset Selection, the chosen model varied between metrics. For Mallows' $C_p$ and $BIC$, the number of variables chosen was $1$. For $Adjusted R^{2}$, the number of variables chosen was $7$. Although $Adjusted R^{2}$ has a penalty term, there still appears to be "leakage", where adding additional variables generally increases the percentage of total variance explained by the model. 
+    
+    The reason it stops at $X^{7}$ is somewhat intuitive. The model contains an intercept, a random normal coefficient, an error term, and $X^{7}$. This is a fairly small model, and $X^{8}$ model contains an additional term _an order of magnitude_ larger than the $X^{7}$ model. Hence, the method stops at the inclusion of $X^{7}$. 
+    
+    Under the lasso method, the produced model has $4$ coefficients: an intercept term, plus variables $X^{5},\ X^{7},\ X^{9}$. Interestingly, the model produced under CV had $3$ coefficients: an intercept term, plus variables $X^{5},\ X^{7}$.
+    
+    \ 
+    
+### Exercise 9
+
+In this exercise, we will predict the number of applications received using the other variables in the `College` data set.
+
+```{r Ex9base1}
+# Assign the data set
+college <- College
+
+# Check for NA values
+sum(is.na(college))
+```
+
+(a) Split the data set into a training set and a test set.
+    
+    \ 
+    
+```{r Ex9a1, indent = "    "}
+# Set seed for reproducibility
+set.seed(123)
+
+# Split data 70/30
+coll.train.rn <- as.logical(rbinom(nrow(college), 1, 0.7))
+
+# Compare split to approximation, target = 70
+mean(coll.train.rn)
+
+# Test number of rows in data = number of rows in training and test sets
+nrow(college) == nrow(college[coll.train.rn,]) + nrow(college[!coll.train.rn,])
+
+# Create model.matrix for use in {glmnet}
+coll.x <- model.matrix(Apps ~ ., data = college)[, -1]
+coll.y <- college$Apps
+```
+    
+    \ 
+    
+(b) Fit a linear model using least squares on the training set, and report the test error obtained.
+    
+    \ 
+    
+```{r Ex9b1, indent = "    "}
+# Fit linear regression model on training set
+coll.lsr.train <- lm(Apps ~ ., data = college, subset = coll.train.rn)
+
+# Summary statistics
+summary(coll.lsr.train)
+
+# View measures of error between training and test sets
+coll.lsr.fit <- fit(forecast(coll.lsr.train, 
+                             newdata = college[!coll.train.rn, ]),
+                    college$Apps[!coll.train.rn])
+coll.lsr.fit
+
+# Manual calculation of MSE on test set
+coll.lsr.test.mse <- mean((college$Apps - predict(coll.lsr.train,
+                                                  college))[!coll.train.rn]^2)
+coll.lsr.test.mse
+
+# Compare for validity
+coll.lsr.fit[2, 1] == coll.lsr.test.mse
+```
+    
+    \ 
+    
+    __Comments__: The test MSE is 1315674.
+    
+    \ 
+    
+(c) Fit a ridge regression model on the training set, with $\lambda$ chosen by cross-validation. Report the test error obtained.
+    
+    \ 
+    
+```{r Ex9c1, indent = "    ", fig.height = 4.75, fig.width = 5.75}
+#------------------------------------------------------------------------------
+# Ridge Regression
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Regular Fitted Model - Train
+#--------------------------------------
+# Fit ridge regression model on training set
+coll.ridge.train <- glmnet(coll.x[coll.train.rn, ], coll.y[coll.train.rn],
+                           alpha = 0)
+
+#--------------------------------------
+# CV Fitted Model - Train
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Fit CV ridge regression model on training set
+# Note formatting for indexing between coll.x and coll.y
+coll.ridge.cv.train <- cv.glmnet(coll.x[coll.train.rn, ],
+                                 coll.y[coll.train.rn], alpha = 0)
+
+# Create plot of MSE
+plot(coll.ridge.cv.train)
+
+# Assign and view optimal value of lambda
+coll.ridge.cv.train.lambda <- coll.ridge.cv.train$lambda.min
+coll.ridge.cv.train.lambda
+
+#--------------------------------------
+# Test Error (MSE)
+#--------------------------------------
+# View measure of error between training and test sets
+# Use optimal value of lambda from CV
+coll.ridge.pred <- predict(coll.ridge.train, newx = coll.x[!coll.train.rn, ],
+                           s = coll.ridge.cv.train.lambda)
+
+# Compute MSE on test set
+coll.ridge.test.mse <- mean((coll.ridge.pred - coll.y[!coll.train.rn])^2)
+coll.ridge.test.mse
+
+#--------------------------------------
+# Full Deployment
+#--------------------------------------
+# Fit ridge regression model on full set
+coll.ridge.full <- glmnet(coll.x, coll.y, alpha = 0)
+
+# View coefficient estimates under optimal lambda
+predict(coll.ridge.full, type = "coefficients", s = coll.ridge.cv.train.lambda)
+```
+    
+    \ 
+    
+    __Comments__: The test MSE is 1331462.
+    
+    \ 
+    
+(d) Fit a lasso model on the training set, with $\lambda$ chosen by cross-validation. Report the test error obtained, along with the number of non-zero coefficient estimates.
+    
+    \ 
+    
+```{r Ex9d1, indent = "    ", fig.height = 4.75, fig.width = 5.75}
+#------------------------------------------------------------------------------
+# Lasso Regression
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Regular Fitted Model - Train
+#--------------------------------------
+# Fit lasso regression model on training set
+coll.lasso.train <- glmnet(coll.x[coll.train.rn, ], coll.y[coll.train.rn],
+                           alpha = 1)
+
+#--------------------------------------
+# CV Fitted Model - Train
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Fit CV lasso regression model on training set
+# Note formatting for indexing between coll.x and coll.y
+coll.lasso.cv.train <- cv.glmnet(coll.x[coll.train.rn, ],
+                                 coll.y[coll.train.rn], alpha = 1)
+
+# Create plot of MSE
+plot(coll.lasso.cv.train)
+
+# Assign and view optimal value of lambda
+coll.lasso.cv.train.lambda <- coll.lasso.cv.train$lambda.min
+coll.lasso.cv.train.lambda
+
+#--------------------------------------
+# Test Error (MSE)
+#--------------------------------------
+# View measure of error between training and test sets
+# Use optimal value of lambda from CV
+coll.lasso.pred <- predict(coll.lasso.train, s = coll.lasso.cv.train.lambda,
+                           newx = coll.x[!coll.train.rn, ])
+
+# Compute MSE on test set
+coll.lasso.test.mse <- mean((coll.lasso.pred - coll.y[!coll.train.rn])^2)
+coll.lasso.test.mse
+
+#--------------------------------------
+# Full Deployment
+#--------------------------------------
+# Fit lasso regression model on full set
+coll.lasso.full <- glmnet(coll.x, coll.y, alpha = 1)
+
+# View coefficient estimates under optimal lambda
+predict(coll.lasso.full, type = "coefficients", s = coll.lasso.cv.train.lambda)
+```
+    
+    \ 
+    
+    __Comments__: The MSE of 1322857 is the test MSE under a fixed (optimal) value of $\lambda$. The coefficients provided above reflect the fixed (optimal) value of lambda deployed on the "full" data set, and _not_ just the train or test sets. Only two variables had coefficients fixed to zero: `F.Undergrad` and `Books`.
+    
+    \ 
+    
+(e) Fit a PCR model on the training set, with $M$ chosen by cross-validation. Report the test error obtained, along with the value of $M$ selected by cross-validation.
+    
+    \ 
+    
+```{r Ex9e1, indent = "    ", fig.height = 4.75, fig.width = 5.75}
+#------------------------------------------------------------------------------
+# Principal Components Regression
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# CV Fitted Model - Full
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Fit CV model from full data set
+coll.pcr.cv <- pcr(Apps ~ ., data = college, scale = T, validation = "CV")
+
+# Summary statistics
+# Note percent changes in percent variance explained by components
+summary(coll.pcr.cv)
+
+# Create plot of MSE
+validationplot(coll.pcr.cv, val.type = "MSEP")
+
+#--------------------------------------
+# CV Fitted Model - Train
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Fit CV model from train data set
+coll.pcr.train.cv <- pcr(Apps ~ ., data = college, subset = coll.train.rn,
+                         scale = T, validation = "CV")
+
+# Summary statistics 
+# Note percent changes in percent variance explained by components
+summary(coll.pcr.train.cv)
+
+# Create plot of MSE
+validationplot(coll.pcr.train.cv, val.type = "MSEP")
+
+#--------------------------------------
+# Test Error (MSE)
+#--------------------------------------
+# View measure of error between training and test sets
+coll.pcr.pred <- predict(coll.pcr.train.cv, college[!coll.train.rn, ],
+                         ncomp = 17)
+
+# Compute MSE on test set
+coll.pcr.test.mse <- mean((coll.pcr.pred - coll.y[!coll.train.rn])^2)
+coll.pcr.test.mse
+
+#--------------------------------------
+# Full Deployment
+#--------------------------------------
+# Fit principal component regression model on full set
+coll.pcr.full <- pcr(Apps ~ ., data = college, scale = T, ncomp = 17)
+
+# Summary statistics
+# Note percent changes in percent variance explained by components
+summary(coll.pcr.full)
+
+# Create plot of MSE
+validationplot(coll.pcr.full, val.type = "MSEP")
+```
+    
+    \ 
+    
+    __Comments__: The test MSE is 1315674. The rPer details in the `mvrVAL()` function from the `{pls}` package, the "adjCV" or adjusted CV is the "bias-corrected cross-validation estimate". The number of principal components to use was chosen by examining the adjCV value for RMSEP (root mean square error of prediction) at each number of components. The model with the lowest adjCV value for RMSEP included 17 principal components - all variables in the data set.
+    
+    Another approach is to have a pre-determined threshold for percent of variance explained. An example of this might be "include the number of principal components that explain 80% of the total variance". At some point, the trade-off between 'additional component included' and 'additional percentage points of variance explained' may not make sense. The "Eigen Rule" is yet another approach. While these approaches vary in methodology, it's important to remember that these are approaches rather than hard rules.
+    
+    Deployed on the full model, the 17 principal components explain 92.92% of the variance in the response variable `Apps`. 
+    
+    \ 
+    
+(f) Fit a PLS model on the training set, with $M$ chosen by cross-validation. Report the test error obtained, along with the value of $M$ selected by cross-validation.
+    
+    \ 
+    
+```{r Ex9f1, indent = "    ", fig.height = 4.75, fig.width = 5.75}
+#------------------------------------------------------------------------------
+# Partial Least Squares Regression
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# CV Fitted Model - Full
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Fit CV model from full data set
+coll.pls.cv <- plsr(Apps ~ ., data = college, scale = T, validation = "CV")
+
+# Summary statistics
+# Note percent changes in percent variance explained by components
+summary(coll.pls.cv)
+
+# Create plot of MSE
+validationplot(coll.pls.cv, val.type = "MSEP")
+
+#--------------------------------------
+# CV Fitted Model - Train
+#--------------------------------------
+# Set seed for reproducibility
+set.seed(123)
+
+# Fit CV model from train data set
+coll.pls.train.cv <- plsr(Apps ~ ., data = college, subset = coll.train.rn,
+                         scale = T, validation = "CV")
+
+# Summary statistics 
+# Note percent changes in percent variance explained by components
+summary(coll.pls.train.cv)
+
+# Create plot of MSE
+validationplot(coll.pls.train.cv, val.type = "MSEP")
+
+#--------------------------------------
+# Test Error (MSE)
+#--------------------------------------
+# View measure of error between training and test sets
+coll.pls.pred <- predict(coll.pls.train.cv, college[!coll.train.rn, ],
+                         ncomp = 13)
+
+# Compute MSE on test set
+coll.pls.test.mse <- mean((coll.pls.pred - coll.y[!coll.train.rn])^2)
+coll.pls.test.mse
+
+#--------------------------------------
+# Full Deployment
+#--------------------------------------
+# Fit principal component regression model on full set
+coll.pls.full <- plsr(Apps ~ ., data = college, scale = T, ncomp = 13)
+
+# Summary statistics
+# Note percent changes in percent variance explained by components
+summary(coll.pls.full)
+
+# Create plot of MSE
+validationplot(coll.pls.full, val.type = "MSEP")
+```
+    
+    \ 
+    
+    __Comments__: The test MSE is 1310545. Per details in the `mvrVAL()` function from the `{pls}` package, the "adjCV" or adjusted CV is the "bias-corrected cross-validation estimate". The number of components to use was chosen by examining the adjCV value for RMSEP (root mean square error of prediction) at each number of components. The model with the lowest adjCV value for RMSEP included 13 components (from 13, all components had the same adjCV value for RMSEP). 
+    
+    Deployed on the full model, the 13 components explain 92.92% of the variance in the response variable `Apps`. 
+    
+    \ 
+    
+(g) Comment on the results obtained. How accurately can we predict the number of college applications received? Is there much difference among the test errors resulting from these five approaches?
+    
+    \ 
+    
+```{r Ex9g1, indent = "    "}
+#------------------------------------------------------------------------------
+# Comparison of Results
+#------------------------------------------------------------------------------
+# Generate RMSE for each MSE
+coll.lsr.test.rmse <- sqrt(coll.lsr.test.mse)
+coll.ridge.test.rmse <- sqrt(coll.ridge.test.mse)
+coll.lasso.test.rmse <- sqrt(coll.lasso.test.mse)
+coll.pcr.test.rmse <- sqrt(coll.pcr.test.mse)
+coll.pls.test.rmse <- sqrt(coll.pls.test.mse)
+
+# Bind rows of RMSE
+coll.rmse <- rbind(coll.lsr.test.rmse, coll.ridge.test.rmse,
+                   coll.lasso.test.rmse, coll.pcr.test.rmse, coll.pls.test.rmse)
+
+# Bind rows of MSE
+coll.mse <- rbind(coll.lsr.test.mse, coll.ridge.test.mse, coll.lasso.test.mse,
+                  coll.pcr.test.mse, coll.pls.test.mse)
+
+# Create and view table of results
+coll.comp <- cbind(coll.mse, coll.rmse)
+colnames(coll.comp) <- c("Test MSE", "Test RMSE")
+rownames(coll.comp) <- c("Least Squares Regression", "Ridge Regression", 
+                         "Lasso Regression", "Principal Components Regression",
+                         "Partial Least Squares Regression")
+coll.comp
+```
+    
+    \ 
+    
+    __Comments__: Of the results, the Partial Least Squares Regression (LSR) method performed best. The Ride Regression (RR) method used all variables, and set no coefficients to zero. The Lasso Regression (LR) performed slightly better then RR, but still not as well as LSR. The Principal Components Regression (PCR) tied with LSR. At first glance this may seem odd, but recall the PCR used all 17 variables, and LSR did as well. PCR really shines as a dimension reduction method (additionally it yields orthogonal predictors). 
+    
+    At first, PLS performing better than PCR with fewer variables seemed surprising. Additionally, when deployed on the full `college` data set, the models each resulted in the same percentage of variance in `Apps` being explained, despite the models having different number of components. The PCR model had $17$ principal components, while the PLS model had $13$ components. As the `ISLR` text notes, "This is because PCR only attempts to maximize the amount of variance explained in the predictors, while PLS searches for directions that explain variance in both the predictors and the response." This explanation seems linked to why PLS was able to achieve the same percentage of variance explanation in the response, but also why it performed slightly better than PCR.
+    
+    Finally, these error measurements do not seem horrendously bad. Simply looking at the MSE for 'size' does not inform the reasonableness of the number. Mean Square Error (MSE) is computed by taking the arithmetic average (mean) of all the error values (the difference between predicted and actual) and squaring it. The Root Mean Square Error (RMSE) is calculated by taking the square root of the MSE.
+    
+    Consider some properties of the response variable:
+    
+```{r Ex9g2, indent = "    "}
+summary(college$Apps)
+```
+    
+    The mean is greatly affected by outliers or other extreme observations. The RMSE values are not great, but given the woodchipper approach in modeling (using all variables), and the wide range of values (particularly the max relative to the median and mean) they are understandably not great. Other models should be considered. It seems models that use a decision tree could perform well, particularly if care was taken to generate interaction terms and associated dummy variables.
+    
+    \ 
+    
+```{r FIN}
+# FIN
+
+# Session info
+sessionInfo()
+```
