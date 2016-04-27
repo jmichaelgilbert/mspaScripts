@@ -1,6 +1,6 @@
 ###############################################################################
 # R_EDA_Sandbox.R
-# Last updated: 2016-04-20 by MJG
+# Last updated: 2016-04-27 by MJG
 ###############################################################################
 
 # A compilation of useful functions to [ideally] deploy on any data set
@@ -248,7 +248,7 @@ fac.freq <- function(data, list){
 }
 
 #--------------------------------------
-# fac.merge()
+# fac.flag()
 #--------------------------------------
 # Function to create indicator variables from factor variable levels
 fac.flag <- function(data, list){
