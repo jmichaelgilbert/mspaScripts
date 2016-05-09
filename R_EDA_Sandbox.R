@@ -54,10 +54,10 @@ df.cn.all <- grep("^[MF_]", colnames(df), value = T, invert = T)
 #==============================================================================
 
 #--------------------------------------
-# m.flag()
+# miss.flag()
 #--------------------------------------
 # Function to create indicator variables as missing flags
-m.flag <- function(data, list){
+miss.flag <- function(data, list){
     for (var in list){
         if (sum(is.na(data[, var])) > 0){
             data[paste("MF", var, sep = "_")] <- 
@@ -85,11 +85,14 @@ num.boxplot <- function(data, list, vs = F){
         if (vs){
             boxplot(data[, var] ~ temp, col = "grey",
                     main = paste(data.name, var," versus ",
-                                 data.name, data.response, sep = ""))
+                                 data.name, data.response, sep = ""),
+                    ylab = "Values")
         }
         if (!vs){
             boxplot(data[, var], col = "grey",
-                    main = paste("Boxplot of ", data.name, var, sep = ""))
+                    main = paste("Boxplot of ", data.name, var, sep = ""),
+                    xlab = paste(data.name, var, sep = ""),
+                    ylab = "Values")
         }
     }
 }
@@ -156,7 +159,7 @@ num.plots <- function(data, list, norm = F, vs = F){
         num.boxplot(data, var, vs)
         num.qq(data, var)
     }
-    par(mfcol = c(1, 1))
+    return(par(mfcol = c(1, 1)))
 }
 
 #------------------------------------------------------------------------------
