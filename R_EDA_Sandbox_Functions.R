@@ -1,6 +1,6 @@
 ###############################################################################
 # R_EDA_Sandbox_Functions.R
-# Last updated: 2016-05-08 by MJG
+# Last updated: 2016-05-09 by MJG
 ###############################################################################
 
 # A compilation of useful functions to [ideally] deploy on any data set
@@ -20,10 +20,10 @@
 #==============================================================================
 
 #--------------------------------------
-# m.flag()
+# miss.flag()
 #--------------------------------------
 # Function to create indicator variables as missing flags
-m.flag <- function(data, list){
+miss.flag <- function(data, list){
     for (var in list){
         if (sum(is.na(data[, var])) > 0){
             data[paste("MF", var, sep = "_")] <- 
