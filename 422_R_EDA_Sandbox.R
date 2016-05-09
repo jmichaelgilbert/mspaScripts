@@ -1,6 +1,6 @@
 ###############################################################################
 # R_EDA_Sandbox.R
-# Last updated: 2016-04-20 by MJG
+# Last updated: 2016-05-08 by MJG
 ###############################################################################
 
 # A compilation of useful functions to [ideally] deploy on any data set
@@ -222,12 +222,51 @@ num.trans <- function(data, list){
 # fac.barplot()
 #--------------------------------------
 # Function to create barplots of factor variables
-fac.barplot <- function(data, list){
+fac.barplot <- function(data, list, cat = F){
     for (var in list){
-        plot(data[, var], 
-             main = paste("Variable: ", data.name, var, sep = ""),
-             ylim = c(0, 1.1*max(summary(data[, var]))),
-             ylab = "Frequency")
+        temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+        if (cat){
+            barplot(table(temp, data[, var]),
+                          main = paste("Variable: ", data.name, var, sep = ""),
+                          ylim = c(0, 1.1*max(summary(data[, var]))),
+                          ylab = "Frequency", beside = T)
+        }
+        if (!cat){
+            plot(data[, var],
+                 main = paste("Variable: ", data.name, var, sep = ""),
+                 ylim = c(0, 1.1*max(summary(data[, var]))),
+                 ylab = "Frequency")
+        }
+    }
+}
+
+#--------------------------------------
+# fac.boxplot()
+#--------------------------------------
+# Function to create boxplots of categorical variables
+fac.boxplot <- function(data, list){
+    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    for (var in list){
+        plot(data[, var], temp, col = "grey",
+             main = paste(data.name, var, " versus ",
+                          data.name, data.response, sep = ""))
+    }
+}
+
+#--------------------------------------
+# fac.mosaic()
+#--------------------------------------
+# Function to create mosaic plots of factor variables
+fac.mosaic <- function(data, list){
+    require(RColorBrewer)
+    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    for (var in list){
+        plot(temp, data[, var], 
+             col = brewer.pal(nlevels(data[, var]), "Spectral"),
+             main = paste(data.name, data.response," versus ",
+                          data.name, var, sep = ""),
+             xlab = paste(data.name, data.response, sep = ""),
+             ylab = paste(data.name, var, sep = ""))
     }
 }
 
@@ -248,7 +287,7 @@ fac.freq <- function(data, list){
 }
 
 #--------------------------------------
-# fac.merge()
+# fac.flag()
 #--------------------------------------
 # Function to create indicator variables from factor variable levels
 fac.flag <- function(data, list){
@@ -325,7 +364,7 @@ fac.barplot(auto, auto.cn.fac)
 #------------------------------------------------------------------------------
 
 # Numeric variables
-summary(auto[, !sapply(auto, is.factor)])
+summary(auto[, auto.cn.num])
 
 # Factor variables
 fac.freq(auto, auto.cn.fac)
