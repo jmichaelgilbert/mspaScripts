@@ -210,19 +210,6 @@ fac.barplot <- function(data, list, cat = F){
 }
 
 #--------------------------------------
-# fac.boxplot()
-#--------------------------------------
-# Function to create boxplots of categorical variables
-fac.boxplot <- function(data, list){
-    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
-    for (var in list){
-        plot(data[, var], temp, col = "grey",
-             main = paste(data.name, var, " versus ",
-                          data.name, data.response, sep = ""))
-    }
-}
-
-#--------------------------------------
 # fac.mosaic()
 #--------------------------------------
 # Function to create mosaic plots of factor variables
