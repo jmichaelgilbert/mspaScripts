@@ -1,0 +1,718 @@
+---
+title: "422_Charity_Assignment_01"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document: default
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+Workspace cleanup and prep:
+
+```{r setup.R, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(corrplot)
+library(doParallel)
+library(forecast)
+library(knitr)
+library(missForest)
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+```{r Functions}
+###############################################################################
+# Functions
+###############################################################################
+
+#==============================================================================
+# Missing Observations
+#==============================================================================
+
+#--------------------------------------
+# m.flag()
+#--------------------------------------
+# Function to create indicator variables as missing flags
+m.flag <- function(data, list){
+    for (var in list){
+        if (sum(is.na(data[, var])) > 0){
+            data[paste("MF", var, sep = "_")] <- 
+                ifelse(is.na(data[, var]), 1, 0)
+        }
+    }
+    return(data)
+}
+
+#==============================================================================
+# Numeric Variables
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Plots
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# num.boxplot()
+#--------------------------------------
+# Function to create boxplots of numeric variables
+num.boxplot <- function(data, list, vs = F){
+    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    for (var in list){
+        if (vs){
+            boxplot(data[, var] ~ temp, col = "grey",
+                    main = paste(data.name, var," versus ",
+                                 data.name, data.response, sep = ""))
+        }
+        if (!vs){
+            boxplot(data[, var], col = "grey",
+                    main = paste("Boxplot of ", data.name, var, sep = ""))
+        }
+    }
+}
+
+#--------------------------------------
+# num.hist()
+#--------------------------------------
+# Function to create histograms of numeric variables
+# Optional choice of normal curve overlay
+num.hist <- function(data, list, norm = F){
+    for (var in list){
+        main <- paste("Histogram of ", data.name, var, sep = "")
+        sub <- ifelse(norm, "normal curve overlay (blue)", "")
+        y <- hist(data[, var], plot = F)
+        h <- hist(data[, var], col = "grey", main = main, sub = sub,
+                  ylim = c(0, 1.1*max(y$counts)),
+                  xlab = paste(data.name, var, sep = ""))
+        if (norm){
+            xfit <- seq(min(data[, var]), max(data[, var]), length = 100)
+            yfit <- dnorm(xfit, mean = mean(data[, var]), sd = sd(data[, var]))
+            yfit <- yfit * diff(h$mids[1:2]) * length(data[, var])
+            lines(xfit, yfit, col = "blue", lwd = 2)
+        }
+    }
+}
+
+#--------------------------------------
+# num.qq()
+#--------------------------------------
+# Function to create Q-Q plots of numeric variables
+num.qq <- function(data, list){
+    for (var in list){
+        qqnorm(data[, var], pch = 21, bg = "grey",
+               main = paste("Normal Q-Q Plot of ", data.name, var, sep = ""))
+        qqline(data[, var], lwd = 2, col = "blue")
+    }
+}
+
+#--------------------------------------
+# num.scatter()
+#--------------------------------------
+# Function to create scatterplots of numeric variables
+num.scatter <- function(data, list){
+    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    for (var in list){
+        plot(data[, var], temp, pch = 21, bg = "grey",
+             main = paste(data.name, data.response," versus ", 
+                          data.name, var, sep = ""),
+             ylab = paste(data.name, data.response, sep = ""),
+             xlab = paste(data.name, var, sep = ""))
+    }
+}
+
+#--------------------------------------
+# num.plots()
+#--------------------------------------
+# Function to produce four plots per variable:
+#   Scatterplot, Q-Q Plot, Histogram, Boxplot
+num.plots <- function(data, list, norm = F, vs = F){
+    par(mfcol = c(2, 2))
+    for (var in list){
+        num.hist(data, var, norm)
+        num.scatter(data, var)
+        num.boxplot(data, var, vs)
+        num.qq(data, var)
+    }
+    par(mfcol = c(1, 1))
+}
+
+#------------------------------------------------------------------------------
+# Variable Manipulation
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# num.trims()
+#--------------------------------------
+# Function to trim numeric variables at various percentiles
+num.trims <- function(data, list){
+    require(scales)
+    for (var in list){
+        # 1st and 99th
+        T99 <- quantile(data[, var], c(0.01, 0.99))
+        data[paste(var, "T99", sep = "_")] <- squish(data[, var], T99)
+        
+        # 5th and 95th
+        T95 <- quantile(data[, var], c(0.05, 0.95))
+        data[paste(var, "T95", sep = "_")] <- squish(data[, var], T95)
+        
+        # 10th and 90th
+        T90 <- quantile(data[, var], c(0.10, 0.90))
+        data[paste(var, "T90", sep = "_")] <- squish(data[, var], T90)
+        
+        # 25th and 75th
+        T75 <- quantile(data[, var], c(0.25, 0.75))
+        data[paste(var, "T75", sep = "_")] <- squish(data[, var], T75)
+    }
+    return(data)
+}
+
+#--------------------------------------
+# num.trans()
+#--------------------------------------
+# Function to transform numeric variables
+num.trans <- function(data, list){
+    for (var in list){
+        # Natural Log
+        var_ln <- paste(var, "ln", sep = "_")
+        data[var_ln] <- (sign(data[, var]) * log(abs(data[, var])+1))
+        
+        # Square Root
+        var_rt <- paste(var, "rt", sep = "_")
+        data[var_rt] <- (sign(data[, var]) * sqrt(abs(data[, var])+1))
+        
+        # Square
+        var_sq <- paste(var, "sq", sep = "_")
+        data[var_sq] <- (data[, var] * data[, var])
+    }
+    return(data)
+}
+
+#==============================================================================
+# Factor Variables
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Plots
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# fac.barplot()
+#--------------------------------------
+# Function to create barplots of factor variables
+fac.barplot <- function(data, list, cat = F){
+    for (var in list){
+        temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+        if (cat){
+            barplot(table(temp, data[, var]),
+                          main = paste("Variable: ", data.name, var, sep = ""),
+                          ylim = c(0, 1.1*max(summary(data[, var]))),
+                          ylab = "Frequency", beside = T)
+        }
+        if (!cat){
+            plot(data[, var],
+                 main = paste("Variable: ", data.name, var, sep = ""),
+                 ylim = c(0, 1.1*max(summary(data[, var]))),
+                 ylab = "Frequency")
+        }
+    }
+}
+
+#--------------------------------------
+# fac.boxplot()
+#--------------------------------------
+# Function to create boxplots of categorical variables
+fac.boxplot <- function(data, list){
+    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    for (var in list){
+        plot(data[, var], temp, col = "grey",
+             main = paste(data.name, var, " versus ",
+                          data.name, data.response, sep = ""))
+    }
+}
+
+#--------------------------------------
+# fac.mosaic()
+#--------------------------------------
+# Function to create mosaic plots of factor variables
+fac.mosaic <- function(data, list){
+    require(RColorBrewer)
+    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    for (var in list){
+        plot(temp, data[, var], 
+             col = brewer.pal(nlevels(data[, var]), "Spectral"),
+             main = paste(data.name, data.response," versus ",
+                          data.name, var, sep = ""),
+             xlab = paste(data.name, data.response, sep = ""),
+             ylab = paste(data.name, var, sep = ""))
+    }
+}
+
+#------------------------------------------------------------------------------
+# Variable Manipulation
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# fac.freq()
+#--------------------------------------
+# Function to display frequencies of factor variables
+fac.freq <- function(data, list){
+    for (var in list){
+        temp <- as.data.frame(summary(data[, var]))
+        names(temp)[1] <- paste(data.name, var, sep = "")
+        print(temp)
+    }
+}
+
+#--------------------------------------
+# fac.flag()
+#--------------------------------------
+# Function to create indicator variables from factor variable levels
+fac.flag <- function(data, list){
+    for (var in list){
+        for (level in unique(data[, var])){
+            data[paste(var, level, sep = "_")] <- 
+                ifelse(data[, var] == level, 1, 0)
+        }
+    }
+    return(data)
+}
+```
+
+## Data Quality Check
+
+The purpose of a data quality check is for the user to get to know the data. The data quality check is a quick summary of the values of the data. The summary can be tabular or graphical, but in general you want to know the value ranges, the shape of the distributions, and the number of missing values for each variable in the dataset.
+
+```{r DQbase1}
+#------------------------------------------------------------------------------
+# Data prep
+#------------------------------------------------------------------------------
+# Load data - treat blanks, single-space, and NA characters as NAs
+ctrn <- read.csv("~/charityTRN.csv", header = T, na.strings = c("", " ", "NA"))
+
+# Check for duplicates of ID
+anyDuplicated(ctrn$ID)
+
+# Assign ID as index
+rownames(ctrn) <- ctrn$ID
+
+# Drop ID
+ctrn <- subset(ctrn, select = -ID)
+```
+
+(a) Use R to perform a data quality check on the data provided in `charityTRN.csv`. Report your findings.
+    
+    \ 
+    
+```{R DQa1, indent = "    "}
+#------------------------------------------------------------------------------
+# Summary Statistics
+#------------------------------------------------------------------------------
+# View variable names
+names(ctrn)
+
+# View data structure
+str(ctrn)
+
+# Summary statistics
+summary(ctrn)
+```
+    
+```{R DQa2, indent = "    "}
+#------------------------------------------------------------------------------
+# Variable Ranges (non-factor predictor variables)
+#------------------------------------------------------------------------------
+# Assign temp data.frame() IFF variables are not factors
+temp <- ctrn[, !sapply(ctrn, is.factor)]
+
+# Use apply, but must transpose as it produces a 2x7 matrix
+temp <- t(apply(temp, 2, function(x) range(x)))
+
+# Add column names
+colnames(temp) <- c("Min", "Max")
+
+# Round to two digits, then remove temp
+round(temp, digits = 2); rm(temp)
+```
+    
+    \ 
+    
+    The ranges above help identify candidate variables for conversion to factors. For instance, the range of `DONR` and `HOME` is 0 to 1, which suggests they are binary indicator variables that `R` has treated as integers. Another example is `HINC`, with a range of `NA` to `NA`. This suggests `R` has incorrectly treated `HINC` as an integer.
+    
+    \ 
+    
+```{r DQa3, indent = "    "}
+#------------------------------------------------------------------------------
+# Variable Conversions
+#------------------------------------------------------------------------------
+# DONR = binary indicator for response to mailing
+ctrn$DONR <- as.factor(ctrn$DONR)
+
+# HOME = binary indicator variable for owning a home
+ctrn$HOME <- as.factor(ctrn$HOME)
+
+# HINC = household income
+ctrn$HINC <- as.factor(ctrn$HINC)
+
+# GENDER = only four valid levels, but has six
+ctrn$GENDER[!is.na(ctrn$GENDER) & ctrn$GENDER == "A"] <- NA
+ctrn$GENDER[!is.na(ctrn$GENDER) & ctrn$GENDER == "C"] <- NA
+
+# Remove levels with zero observations ("A", "C")
+ctrn$GENDER <- factor(ctrn$GENDER)
+```
+    
+    \ 
+    
+    The variables `RFA_96` and `RFA_97` are concatenated 'intelligent' strings. That is, for a given subset of characters in the variable, there is an associated meaning. In these values, the total length is `3` with each `1` character corresponding to specific meaning (source: data dictionary). 
+    
+    Both variables were deconstructed with a new variable created in the dataset for each subset character with value. Thus, three new variables were created for each. The idea here is to breakdown and investigate any relationships individually rather than concatenated.
+    
+    \ 
+    
+```{r DQa4, indent = "    "}
+#------------------------------------------------------------------------------
+# Other Data Prep
+#------------------------------------------------------------------------------
+# RFA_96 = concatenated 'intelligent' string
+ctrn$RFA_96_1 <- as.factor(substr(as.character(ctrn$RFA_96), 1, 1))
+ctrn$RFA_96_2 <- as.factor(substr(as.character(ctrn$RFA_96), 2, 2))
+ctrn$RFA_96_3 <- as.factor(substr(as.character(ctrn$RFA_96), 3, 3))
+
+
+# RFA_97 = concatenated 'intelligent' string
+ctrn$RFA_97_1 <- as.factor(substr(as.character(ctrn$RFA_97), 1, 1))
+ctrn$RFA_97_2 <- as.factor(substr(as.character(ctrn$RFA_97), 2, 2))
+ctrn$RFA_97_3 <- as.factor(substr(as.character(ctrn$RFA_97), 3, 3))
+```
+    
+    \ 
+    
+    The dataset `ctrn` was then cloned for imputation of `NA` values. The package `missForest` cannot handle factor variables with greater than 35 levels, so the original versions of `RFA_96` and `RFA_97` were dropped. 
+    
+    This approach seems correct, regardless of the restriction in `missForest` as this will impute each missing part of the whole, and then the resulting values are concatenated to re-create the whole.
+    
+    __Note__: The code below is included to demonstrate how this was accomplished, however due to run time required (~240 seconds per pass, four passes = ~16 minutes) is not executed. Thus, results are not produced for items such as 'out-of-bag error'. 
+    
+    \ 
+    
+```{r DQa5, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Imputations
+#------------------------------------------------------------------------------
+# Create separate data.frame for imputed values
+ctrn.imp <- ctrn
+
+# Drop original variables before missing value imputation
+ctrn.imp <- subset(ctrn.imp, select = -c(RFA_96))
+ctrn.imp <- subset(ctrn.imp, select = -c(RFA_97))
+
+# Conduct MI
+registerDoParallel(cores = 3)
+ctrn.mi <- missForest(ctrn.imp, ntree = 400, verbose = T, 
+                      parallelize = "forests")
+
+# View out-of-bag error (OOB) from MI
+ctrn.mi$OOBerror
+
+# Assign results back to data.frame
+ctrn.imp <- ctrn.mi$ximp
+
+# Remove 'ctrn.mi'
+rm(ctrn.mi)
+
+# Validate no NA values
+sum(is.na(ctrn.imp))
+
+# Re-create dropped variables based on imputed values
+ctrn.imp$RFA_96 <- as.factor(paste(ctrn.imp$RFA_96_1, ctrn.imp$RFA_96_2,
+                                   ctrn.imp$RFA_96_3, sep = ""))
+ctrn.imp$RFA_97 <- as.factor(paste(ctrn.imp$RFA_97_1, ctrn.imp$RFA_97_2,
+                                   ctrn.imp$RFA_97_3, sep = ""))
+```
+    
+    \ 
+    
+    There are now two "identical" datasets, the only difference is that `ctrn` contains the original `NA` values, while `ctrn.imp` has imputed `NA` values. Once a model is selected, it will be interesting to see model performance between the two datasets. In fact, because of these changes, the model selected may even differ between the datasets.
+    
+    \ 
+    
+(b) Are there any missing values in the data?
+    
+    \ 
+    
+    Yes, `R` identified some during import with the `read.csv()` function. Additional `NA` values were discovered which occupied a single whitespace (e.g. " "). One example of this was the variable `GENDER`. Since the `read.csv()` function allows the user to specify characters to treat as `NA`, the data were imported a second time with the blank fields (""), a single whitespace (" "), and the character "NA" being treated as `NA` values in `R`.
+    
+    Counts of the `NA` values are shown below as a total, and by variable:
+    
+```{r DQb1, indent = "    "}
+# Sum of 'NA' values in data.frame(ctrn) in total
+sum(is.na(ctrn[, 1:20]))
+
+# Sum of 'NA' values in data.frame(ctrn) by variable
+sapply(ctrn[, 1:20], function(x) sum(is.na(x)))
+```
+    
+    __Note__: these counts exclude the additional variables created by splitting the `RFA_97` and `RFA_96` variables in `ctrn`. Any `NA` values carry over to the newly created variables.
+    
+    \ 
+    
+(c) Does the data quality check indicate that there are any data anomalies or features in the data that might cause issues in a statistical analysis?
+    
+    \ 
+    
+    Other than the actions already taken, there is some concern with the variables that have the prefix `MED` for _median_. A number of these have nonsensical zero values, for instance `MEDAGE`, which is supposed to represent the "median age of adults 18 or over" in the donor's neighborhood, as collected from the 1990 US Census (source: data dictionary).
+    
+    One method to handle this may be to 'winsorize' the variable, that is, trim it at a present percentile. This does not delete the row where the observation occurs (since the other values for variables also in that row can be useful), but rather sets the minimum or maximum value of that observation not to exceed the specified percentile value.
+    
+    \ 
+    
+## Exploratory Data Analysis (EDA)
+
+The primary purpose of EDA is to look for interesting relationships in the data. While performing the EDA, you will also uncover many uninteresting relationships. It is recommended that you focus on reporting and discussing the interesting relationships in your report. The uninteresting relationships can be either left out of the report or mentioned briefly with the details relegated to an appendix.
+
+(a) Use R to perform EDA for the regression problem. Report your findings.
+    
+    * For the regression problem, subset the dataset down to observations where `DONR = 1`.
+    * The response for the regression problem is `DAMT`.
+    * Pay particular attention to relationships between potential predictor variables and the response. Note that `ID` is for identification purposes only and is not to be used as a predictor.
+    * Which predictors show the most promise for predicting the donation amount?
+    
+    \ 
+    
+    __Note__: Only the four graphs of each type are included. This was done to be conscious of space. All graphs may be reproduced by removing the indexing in the named column lists `ctrn.donr.cn.fac` and `ctrn.donr.cn.num`.
+    
+    \ 
+    
+```{r EDAa1, indent = "    "}
+#==============================================================================
+# Original dataset: ctrn
+#==============================================================================
+```
+    
+```{r EDAa2, indent = "    "}
+#------------------------------------------------------------------------------
+# Staging & Prep
+#------------------------------------------------------------------------------
+# Subset where ctrn.donr$DONR == 1
+ctrn.donr <- ctrn[ctrn$DONR == 1, ]
+
+# Store dataset name for use in titles, etc. later
+data.name <- "ctrn.donr$"
+
+# Set response variable
+data.response <- "DAMT"
+
+# Assign rownames
+ctrn.donr.rn <- as.numeric(rownames(ctrn.donr))
+
+# Assign full column names
+ctrn.donr.cn.all <- colnames(ctrn.donr)
+
+# Create missing flags
+ctrn.donr <- m.flag(ctrn.donr, ctrn.donr.cn.all)
+
+# Assign column names, excluding missing flags
+# all = all, numeric = num, factor = fac
+ctrn.donr.cn.all <- grep("^MF_", colnames(ctrn.donr), value = T, invert = T)
+ctrn.donr.cn.num <- grep("^MF_",
+                         colnames(ctrn.donr[, !sapply(ctrn.donr, is.factor)]),
+                         value = T, invert = T)
+ctrn.donr.cn.fac <- grep("^MF_", 
+                         colnames(ctrn.donr[, sapply(ctrn.donr, is.factor)]),
+                         value = T, invert = T)
+
+# Drop "RFA_97" and "RFA_96" in ctrn.cn.fac
+ctrn.donr.cn.fac <- ctrn.donr.cn.fac[!ctrn.donr.cn.fac == "RFA_96"]
+ctrn.donr.cn.fac <- ctrn.donr.cn.fac[!ctrn.donr.cn.fac == "RFA_97"]
+```
+    
+```{r EDAa3, indent = "    "}
+#------------------------------------------------------------------------------
+# Correlation
+#------------------------------------------------------------------------------
+
+# Produce numeric values of correlation to 'ctrn.donr$DAMT'
+ctrn.donr.cor <- cor(ctrn.donr$DAMT, ctrn.donr[ctrn.donr.cn.num])
+
+# View results
+round(ctrn.donr.cor, digits = 4)
+
+# Produce plot of correlation between 'ctrn.donr$DAMT' and numeric variables
+corrplot(cor(ctrn.donr$DAMT, ctrn.donr[ctrn.donr.cn.num]), 
+         tl.col = "black", tl.cex = 0.8, tl.srt = 45)
+```
+    
+```{r EDAa4, indent = "    "}
+#------------------------------------------------------------------------------
+# Visual EDA
+#------------------------------------------------------------------------------
+
+# Numeric variables
+num.plots(ctrn.donr, ctrn.donr.cn.num[2:5], norm = T)
+
+# Factor variables
+fac.barplot(ctrn.donr, ctrn.donr.cn.fac[2:5])
+fac.boxplot(ctrn.donr, ctrn.donr.cn.fac[2:5])
+```
+    
+```{r EDAa5, indent = "    "}
+#------------------------------------------------------------------------------
+# Quantitative EDA
+#------------------------------------------------------------------------------
+
+# Numeric variables
+summary(ctrn.donr[, ctrn.donr.cn.num])
+
+# Factor variables
+fac.freq(ctrn.donr, ctrn.donr.cn.fac)
+```
+    
+```{r include = F}
+par(mfcol = c(1, 1))
+```
+    
+    \ 
+    
+    __Comments__: For _numeric_ variables, the correlation values and plot are extremely useful. The plot shows that, of those who did donate, the `DAMT` variable is positively correlated with `LASTGIFT`, `MAXRAMNT`, and `RAMNTALL`, and negatively correlated with `NGIFTALL`. This is not exhaustive, and there is _some_ correlation with the other numeric variables.
+    
+    For _categorical_ variables, the "intuitive suspects" do not seem to have much of an effect. This includes the variables `HOME`, `HINC`, and `GENDER` (to some extent, a minor effect is seen). Where the promising predictors really shine is in the splitting of `RFA_96` and `RFA_97`. 
+    
+    In `RFA_96_1`, the most promising predictor is a code of `L`: "a previous donor who made their last donation between 13-24 months ago". In `RFA_96_1`, the most promising predictor is a code of `1`: "one gift in the period of recency". In `RFA_96_3`, the most promising predictor is a code of `G`: "dollar amount of last gift $25.00 and above". (Note: definitions here were sourced from the provided data dictionary.)
+    
+    Thus, the `RFA` or Recency, Frequency, Amount code that appears most promising is a combination of `L1G` for `RFA_96`. This seems reasonable: someone who has not donated in 1-2 years makes one gift in the recency period, and that gift is "oversized". 
+    
+    One question is whether to individuals who donate frequently but in smaller amounts, or individuals who donate intermittently but in larger amounts. A proposed thesis is that regular donors are regular donors - they will likely donate with or without promotional mailers.
+    
+    Another way to look at this is to flip the question a bit. Suppose we desire receiving $25.00 in donations from an individual. We can get one donation of $25.00, or five donations of $5.00. If individuals _only_ donate after receiving a promotional mailer, then it is more expensive to get to $25.00 over five donations than $25.00 over one donation.
+    
+    Finally, the question of donor or sponsor fatigue comes into play. Another proposed thesis is that it is more effective over the long-run to schedule a frequency for when and to whom to send promotional mailers. People get tired of getting constant promotional mailers asking for donations. So instead, rotate who to send a promotional mailer to based on when they last received one, or when they last donated.
+    
+    \ 
+    
+(b) Use R to perform EDA for the classification problem. Report your findings.
+    
+    * For the classification problem, use the full dataset (all observations).
+    * The response for the classification problem is DONR.
+    * Boxplots by response category are particularly useful when performing EDA for a classification problem.
+    * Note that ID and DAMT are not to be used as predictors for the classification problem.
+    * Which predictors show the most promise for predicting the donation category?
+    
+    \ 
+    
+    __Note__: Only the four graphs of each type are included. This was done to be conscious of space. All graphs may be reproduced by removing the indexing in the named column lists `ctrn.cn.fac` and `ctrn.cn.num`.
+    
+    \ 
+    
+```{r EDAb1, indent = "    "}
+#==============================================================================
+# Original dataset: ctrn
+#==============================================================================
+```
+    
+```{r EDAb2, indent = "    "}
+#------------------------------------------------------------------------------
+# Staging & Prep
+#------------------------------------------------------------------------------
+
+# Store dataset name for use in titles, etc. later
+data.name <- "ctrn$"
+
+# Set response variable
+data.response <- "DONR"
+
+# Assign rownames
+ctrn.rn <- as.numeric(rownames(ctrn))
+
+# Assign full column names
+ctrn.cn.all <- colnames(subset(ctrn, select = -(DAMT)))
+
+# Create missing flags
+ctrn <- m.flag(ctrn, ctrn.cn.all)
+
+# Assign column names, excluding missing flags
+# all = all, numeric = num, factor = fac
+ctrn.cn.all <- grep("^MF_", colnames(ctrn), value = T, invert = T)
+ctrn.cn.num <- grep("^MF_",
+                         colnames(ctrn[, !sapply(ctrn, is.factor)]),
+                         value = T, invert = T)
+ctrn.cn.fac <- grep("^MF_",
+                         colnames(ctrn[, sapply(ctrn, is.factor)]),
+                         value = T, invert = T)
+
+# Drop response variable in ctrn.cn.fac
+ctrn.cn.fac <- ctrn.cn.fac[!ctrn.cn.fac == data.response]
+
+# Drop "RFA_97" and "RFA_96" in ctrn.cn.fac
+ctrn.cn.fac <- ctrn.cn.fac[!ctrn.cn.fac == "RFA_96"]
+ctrn.cn.fac <- ctrn.cn.fac[!ctrn.cn.fac == "RFA_97"]
+```
+    
+```{r EDAb3, indent = "    ", warning = F}
+#------------------------------------------------------------------------------
+# Visual EDA
+#------------------------------------------------------------------------------
+
+# Numeric variables
+num.plots(ctrn, ctrn.cn.num[2:5], norm = T, vs = T)
+
+# Factor variables
+fac.barplot(ctrn, ctrn.cn.fac[2:5])
+fac.mosaic(ctrn, ctrn.cn.fac[2:5])
+```
+    
+```{r EDAb4, indent = "    "}
+#------------------------------------------------------------------------------
+# Quantitative EDA
+#------------------------------------------------------------------------------
+
+# Table by response
+table(ctrn$DONR)
+
+# Numeric variables
+summary(ctrn[, ctrn.cn.num])
+
+# Factor variables
+fac.freq(ctrn, ctrn.cn.fac)
+```
+    
+```{r include = F}
+par(mfcol = c(1, 1))
+```
+    
+    \ 
+    
+    __Comments__: In the classification problem, the mosaic plots were extremely helpful. The mosaic plots allow for a quick comparison between the levels of the binary response variable, `ctrn$DONR`, where a 0 = not being a donor, and a 1 = being a donor. The mosaic plots allow a quick comparison of the occurance rates in those that are donors vs. those that are not donors.
+    
+    Surprisingly, home ownership (`ctrn$HOME`) was not a big determinant in being a donor or not. However, household income (`ctrn$HINC`) did show differences in occurance rates between populations, while Gender (`ctrn$GENDER`) did not. Finally, each of the `ctrn$RFA_*` variables did show differences in occurance rates between populations, with the exception of `ctrn$RFA_97_1` since each observation had the same value.
+    
+    \ 
+    
+## Next Steps
+
+Next, variable transformations should be conducted and models constructed for both the regression problem and classification problem. The strategy here is to automatically create transformed versions of the variables, and use AVS to hone in on specific variables or their transformed version(s) to use in modeling.
+
+First, a dummy variable is created for each variable that has at least one missing observation, as in some cases missing observations can be predictive. Next, missing values were imputed and stored in a separate dataset. Following that, dummy variables for each level of a given factor variable are created. For numeric variables, a winsorized version is created at the 1st/99th, 5th/95th, 10th/90th, and 25th/75th percentiles. Then transformed versions of all the numeric variables are created, using natural log, square root, and the squared versions.
+
+```{r FIN}
+# FIN
+
+# Session info
+sessionInfo()
+```
