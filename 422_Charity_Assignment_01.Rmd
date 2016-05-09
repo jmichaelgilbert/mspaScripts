@@ -65,8 +65,9 @@ The purpose of a data quality check is for the user to get to know the data. The
 
 ```{r DQbase1}
 #------------------------------------------------------------------------------
-# Data prep
+# Data Prep
 #------------------------------------------------------------------------------
+
 # Load data - treat blanks, single-space, and NA characters as NAs
 ctrn <- read.csv("~/charityTRN.csv", header = T, na.strings = c("", " ", "NA"))
 
@@ -88,6 +89,7 @@ ctrn <- subset(ctrn, select = -ID)
 #------------------------------------------------------------------------------
 # Summary Statistics
 #------------------------------------------------------------------------------
+
 # View variable names
 names(ctrn)
 
@@ -102,6 +104,7 @@ summary(ctrn)
 #------------------------------------------------------------------------------
 # Variable Ranges (non-factor predictor variables)
 #------------------------------------------------------------------------------
+
 # Assign temp data.frame() IFF variables are not factors
 temp <- ctrn[, !sapply(ctrn, is.factor)]
 
@@ -125,6 +128,7 @@ round(temp, digits = 2); rm(temp)
 #------------------------------------------------------------------------------
 # Variable Conversions
 #------------------------------------------------------------------------------
+
 # DONR = binary indicator for response to mailing
 ctrn$DONR <- as.factor(ctrn$DONR)
 
@@ -154,11 +158,11 @@ ctrn$GENDER <- factor(ctrn$GENDER)
 #------------------------------------------------------------------------------
 # Other Data Prep
 #------------------------------------------------------------------------------
+
 # RFA_96 = concatenated 'intelligent' string
 ctrn$RFA_96_1 <- as.factor(substr(ctrn$RFA_96, 1, 1))
 ctrn$RFA_96_2 <- as.factor(substr(ctrn$RFA_96, 2, 2))
 ctrn$RFA_96_3 <- as.factor(substr(ctrn$RFA_96, 3, 3))
-
 
 # RFA_97 = concatenated 'intelligent' string
 ctrn$RFA_97_1 <- as.factor(substr(ctrn$RFA_97, 1, 1))
@@ -180,6 +184,7 @@ ctrn$RFA_97_3 <- as.factor(substr(ctrn$RFA_97, 3, 3))
 #------------------------------------------------------------------------------
 # Imputations
 #------------------------------------------------------------------------------
+
 # Create separate data.frame for imputed values
 ctrn.imp <- ctrn
 
@@ -192,16 +197,13 @@ ptm <- proc.time()
 registerDoParallel(cores = 3)
 ctrn.mi <- missForest(ctrn.imp, ntree = 400, verbose = T, 
                       parallelize = "forests")
-proc.time() - ptm
+proc.time() - ptm; rm(ptm)
 
 # View out-of-bag error (OOB) from MI
 ctrn.mi$OOBerror
 
 # Assign results back to data.frame
-ctrn.imp <- ctrn.mi$ximp
-
-# Remove 'ctrn.mi'
-rm(ctrn.mi)
+ctrn.imp <- ctrn.mi$ximp; rm(ctrn.mi)
 
 # Validate no NA values
 sum(is.na(ctrn.imp))
@@ -232,7 +234,7 @@ ctrn.imp$RFA_97 <- as.factor(paste(ctrn.imp$RFA_97_1, ctrn.imp$RFA_97_2,
 sum(is.na(ctrn[, 1:20]))
 
 # Sum of 'NA' values in data.frame(ctrn) by variable
-sapply(ctrn[, 1:20], function(x) sum(is.na(x)))
+colSums(is.na(ctrn[, 1:20]))
 ```
     
     __Note__: these counts exclude the additional variables created by splitting the `RFA_97` and `RFA_96` variables in `ctrn`. Any `NA` values carry over to the newly created variables.
@@ -276,6 +278,7 @@ The primary purpose of EDA is to look for interesting relationships in the data.
 #------------------------------------------------------------------------------
 # Staging & Prep
 #------------------------------------------------------------------------------
+
 # Subset where ctrn.donr$DONR == 1
 ctrn.donr <- ctrn[ctrn$DONR == 1, ]
 
@@ -462,9 +465,9 @@ fac.freq(ctrn, ctrn.cn.fac)
     
     \ 
     
-    __Comments__: In the classification problem, the mosaic plots were extremely helpful. The mosaic plots allow for a quick comparison between the levels of the binary response variable, `ctrn$DONR`, where a 0 = not being a donor, and a 1 = being a donor. The mosaic plots allow a quick comparison of the occurance rates in those that are donors vs. those that are not donors.
+    __Comments__: In the classification problem, the mosaic plots were extremely helpful. The mosaic plots allow for a quick comparison between the levels of the binary response variable, `ctrn$DONR`, where a 0 = not being a donor, and a 1 = being a donor. The mosaic plots allow a quick comparison of the occurrence rates in those that are donors vs. those that are not donors.
     
-    Surprisingly, home ownership (`ctrn$HOME`) was not a big determinant in being a donor or not. However, household income (`ctrn$HINC`) did show differences in occurance rates between populations, while Gender (`ctrn$GENDER`) did not. Finally, each of the `ctrn$RFA_*` variables did show differences in occurance rates between populations, with the exception of `ctrn$RFA_97_1` since each observation had the same value.
+    Surprisingly, home ownership (`ctrn$HOME`) was not a big determinant in being a donor or not. However, household income (`ctrn$HINC`) did show differences in occurrence rates between populations, while Gender (`ctrn$GENDER`) did not. Finally, each of the `ctrn$RFA_*` variables did show differences in occurrence rates between populations, with the exception of `ctrn$RFA_97_1` since each observation had the same value.
     
     \ 
     
