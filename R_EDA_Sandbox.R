@@ -1,6 +1,6 @@
 ###############################################################################
 # R_EDA_Sandbox.R
-# Last updated: 2016-05-08 by MJG
+# Last updated: 2016-05-12 by MJG
 ###############################################################################
 
 # A compilation of useful functions to [ideally] deploy on any data set
@@ -80,7 +80,7 @@ miss.flag <- function(data, list){
 #--------------------------------------
 # Function to create boxplots of numeric variables
 num.boxplot <- function(data, list, vs = F){
-    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
     for (var in list){
         if (vs){
             boxplot(data[, var] ~ temp, col = "grey",
@@ -136,7 +136,7 @@ num.qq <- function(data, list){
 #--------------------------------------
 # Function to create scatterplots of numeric variables
 num.scatter <- function(data, list){
-    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
     for (var in list){
         plot(data[, var], temp, pch = 21, bg = "grey",
              main = paste(data.name, data.response," versus ", 
@@ -165,6 +165,28 @@ num.plots <- function(data, list, norm = F, vs = F){
 #------------------------------------------------------------------------------
 # Variable Manipulation
 #------------------------------------------------------------------------------
+
+#--------------------------------------
+# num.freq()
+#--------------------------------------
+num.freq <- function(data, list){
+    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
+    for (var in list){
+        name.var <- rep(paste(data.name, var, sep = ""),
+                        each = nlevels(temp))
+        name.split <- rep(paste(data.name, data.response, sep = ""),
+                          each = nlevels(temp))
+        table.level <- levels(temp)
+        table.agg <- format(aggregate(data[, var], by = list(Var = temp),
+                                      summary)$x, nsmall = 2)
+        table.results <- as.data.frame(cbind(name.var, name.split, 
+                                             table.level, table.agg))
+        colnames(table.results)[1] <- "Variable"
+        colnames(table.results)[2] <- "Split On"
+        colnames(table.results)[3] <- "Levels"
+        print(table.results)
+    }
+}
 
 #--------------------------------------
 # num.trims()
@@ -226,13 +248,13 @@ num.trans <- function(data, list){
 #--------------------------------------
 # Function to create barplots of factor variables
 fac.barplot <- function(data, list, cat = F){
+    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
     for (var in list){
-        temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
         if (cat){
             barplot(table(temp, data[, var]),
-                          main = paste("Variable: ", data.name, var, sep = ""),
-                          ylim = c(0, 1.1*max(summary(data[, var]))),
-                          ylab = "Frequency", beside = T)
+                    main = paste("Variable: ", data.name, var, sep = ""),
+                    ylim = c(0, 1.1*max(summary(data[, var]))),
+                    ylab = "Frequency", beside = T)
         }
         if (!cat){
             plot(data[, var],
@@ -249,7 +271,7 @@ fac.barplot <- function(data, list, cat = F){
 # Function to create mosaic plots of factor variables
 fac.mosaic <- function(data, list){
     require(RColorBrewer)
-    temp <- eval(parse(text = paste("data", "$", data.response, sep = "")))
+    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
     for (var in list){
         plot(temp, data[, var], 
              col = brewer.pal(nlevels(data[, var]), "Spectral"),
@@ -268,11 +290,39 @@ fac.mosaic <- function(data, list){
 # fac.freq()
 #--------------------------------------
 # Function to display frequencies of factor variables
-fac.freq <- function(data, list){
+fac.freq <- function(data, list, cat = F){
+    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
     for (var in list){
-        temp <- as.data.frame(summary(data[, var]))
-        names(temp)[1] <- paste(data.name, var, sep = "")
-        print(temp)
+        if (cat){
+            name.var <- rep(paste(data.name, var, sep = ""),
+                            each = nlevels(temp))
+            name.split <- rep(paste(data.name, data.response, sep = ""),
+                              each = nlevels(temp))
+            table.level <- levels(temp)
+            table.agg <- aggregate(data[, var], by = list(Var = temp), 
+                                   summary)$x
+            table.prop <- format(round(prop.table(table.agg, 1) * 100, 
+                                       digits = 2), nsmall = 2)
+            table.results <- as.data.frame(cbind(name.var, name.split, 
+                                                 table.level, table.prop))
+            colnames(table.results)[1] <- "Variable"
+            colnames(table.results)[2] <- "Split On"
+            colnames(table.results)[3] <- "Levels"
+            print(table.results)
+        }
+        if (!cat){
+            name.var <- rep(paste(data.name, var, sep = ""), each = 2)
+            name.type <- c("Raw", "Percent")
+            table.agg <- t(summary(data[, var]))
+            table.prop <- format(round(prop.table(table.agg) * 100, 
+                                       digits = 2), nsmall = 2)
+            table.row <- rbind(table.agg, table.prop)
+            table.col <- cbind(name.var, name.type, table.row)
+            table.results <- as.data.frame(table.col)
+            colnames(table.results)[1] <- "Variable"
+            colnames(table.results)[2] <- "Type"
+            print(table.results)
+        }
     }
 }
 
