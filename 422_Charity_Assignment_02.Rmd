@@ -1,0 +1,1097 @@
+---
+title: "422_Charity_Assignment_02"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+Workspace cleanup and prep:
+
+```{r setup.R, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(boot)
+library(glmnet)
+library(knitr)
+library(leaps)
+library(tree)
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+```{r Functions, message = F, results = "hide"}
+#==============================================================================
+# Functions
+#==============================================================================
+
+# Create function to source functions from GitHub
+source.GitHub <- function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", "cacert.pem",
+                                                      package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url <- "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+```
+
+## Charity Problem - Part 2
+
+### Exercises
+
+1. Data Preparation
+    
+    For this assignment, subset the data in __charityTRN.csv__ to include only those observations for which __DONR = 1__. You will use this reduced dataset for the entirety of the assignment.
+    
+    \ 
+    
+    __Note__: Some data prep operations changed from _Charity Assignment 01_. To conserve space, the option `eval = F` was specified in each chunk, so only the revised code used for data prep is included below. 
+    
+    \ 
+    
+```{r Ex1base1, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Data Prep
+#------------------------------------------------------------------------------
+
+# Load data - treat blanks, single-space, and NA characters as NAs
+ctrn <- read.csv("~/charityTRN.csv", header = T, na.strings = c("", " ", "NA"))
+
+# Check for duplicates of ID
+anyDuplicated(ctrn$ID)
+
+# Assign ID as index
+rownames(ctrn) <- ctrn$ID
+
+# Drop ID
+ctrn <- subset(ctrn, select = -ID)
+```
+    
+```{r Ex1base2, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Variable Conversions
+#------------------------------------------------------------------------------
+
+# DONR = binary indicator for response to mailing
+ctrn$DONR <- as.factor(ctrn$DONR)
+
+# HOME = binary indicator variable for owning a home
+ctrn$HOME <- as.factor(ctrn$HOME)
+
+# HINC = household income
+ctrn$HINC <- as.factor(ctrn$HINC)
+
+# GENDER = only four valid levels, but has six
+ctrn$GENDER[!is.na(ctrn$GENDER) & ctrn$GENDER == "A"] <- NA
+ctrn$GENDER[!is.na(ctrn$GENDER) & ctrn$GENDER == "C"] <- NA
+
+# Remove levels with zero observations ("A", "C")
+ctrn$GENDER <- factor(ctrn$GENDER)
+
+# RFA_96 = concatenated 'intelligent' string
+ctrn$RFA_96_R <- as.factor(substr(ctrn$RFA_96, 1, 1))
+ctrn$RFA_96_F <- as.factor(substr(ctrn$RFA_96, 2, 2))
+ctrn$RFA_96_A <- as.factor(substr(ctrn$RFA_96, 3, 3))
+
+# RFA_97 = concatenated 'intelligent' string
+ctrn$RFA_97_R <- as.factor(substr(ctrn$RFA_97, 1, 1))
+ctrn$RFA_97_F <- as.factor(substr(ctrn$RFA_97, 2, 2))
+ctrn$RFA_97_A <- as.factor(substr(ctrn$RFA_97, 3, 3))
+
+# Be sure to validate the splits as correct! Can use table:
+# table(ctrn$RFA_96, ctrn$RFA_96_R)
+
+# Drop RFA_96, RFA_97, and RFA_97_R (factor variable with only one level)
+ctrn <- subset(ctrn, select = -c(RFA_96, RFA_97, RFA_97_R))
+```
+    
+```{r Ex1base3, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Missing Flags
+#------------------------------------------------------------------------------
+
+# Assign full column names
+ctrn.cn.all <- colnames(ctrn)
+
+# Create missing flags
+ctrn <- miss.flag(ctrn, ctrn.cn.all)
+
+# Sum of 'NA' values in data.frame(ctrn) by variable
+colSums(is.na(ctrn))[colSums(is.na(ctrn)) > 0]
+
+# Compare to sum of flag variables
+colSums(ctrn[, grep("^MF_", names(ctrn))])
+```
+    
+```{r Ex1base4, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Imputations
+#------------------------------------------------------------------------------
+
+# Create clone verison of data.frame
+ctrn.og <- ctrn
+
+# Conduct MI
+ptm <- proc.time()
+registerDoParallel(cores = 3)
+ctrn.mi <- missForest(ctrn, ntree = 400, verbose = T, parallelize = "forests")
+proc.time() - ptm; rm(ptm)
+
+# View out-of-bag error (OOB) from MI
+ctrn.mi.oob <- ctrn.mi$OOBerror; ctrn.mi.oob
+
+# Assign results back to data.frame
+ctrn <- ctrn.mi$ximp
+
+# Validate no NA values
+sum(is.na(ctrn))
+```
+    
+```{r Ex1base5, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Variable Derivations, Trims, Transforms, and Levels
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Derivations
+#--------------------------------------
+
+# Create lifetime promotion-to-gifts ratio
+# Average of number of promotions sent for each gift
+# Rounding off to whole number; cannot get 5.5 promotions
+ctrn$PROMGIFT <- round(ctrn$NUMPROM / ctrn$NGIFTALL, digits = 0)
+
+# Create lifetime gift-to-promotion rate
+# Conversion rate, or effectiveness rate
+ctrn$GIFTPROM <- ctrn$NGIFTALL / ctrn$NUMPROM
+
+# Create mean donation amount
+ctrn$MEANAMT <- ctrn$RAMNTALL / ctrn$NGIFTALL
+
+#--------------------------------------
+# Trims
+#--------------------------------------
+
+# Assign numeric column names, exclude missing flag variables
+ctrn.cn.num <- grep("^MF_", colnames(ctrn[, !sapply(ctrn, is.factor)]),
+                    value = T, invert = T)
+
+# Create trims of numeric variables
+ctrn <- num.trims(ctrn, ctrn.cn.num)
+
+#--------------------------------------
+# Transforms
+#--------------------------------------
+
+# Assign numeric column names, exclude missing flag variables
+ctrn.cn.num <- grep("^MF_", colnames(ctrn[, !sapply(ctrn, is.factor)]),
+                    value = T, invert = T)
+
+# Create transforms of numeric variables
+ctrn <- num.trans(ctrn, ctrn.cn.num)
+
+#--------------------------------------
+# Levels
+#--------------------------------------
+
+# Assign factor column names, excluding missing flag variables
+ctrn.cn.fac <- grep("^MF_", colnames(ctrn[, sapply(ctrn, is.factor)]),
+                    value = T, invert = T)
+
+# Create levels of factor variables
+ctrn <- fac.flag(ctrn, ctrn.cn.fac)
+```
+    
+```{r Ex1base6, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Split & Save
+#------------------------------------------------------------------------------
+
+# Split data 75/25 for Regression & Classification problems
+set.seed(123)
+ctrn$index.test <- as.logical(rbinom(nrow(ctrn), 1, 0.25))
+mean(ctrn$index.test)
+
+# Split the 75 into validation (1/3) and training (2/3)
+set.seed(321)
+ctrn$index.val <- F
+ctrn$index.val[!ctrn$index.test] <- as.logical(rbinom(sum(!ctrn$index.test),
+                                                      1, (1/3)))
+mean(ctrn$index.val[!ctrn$index.test])
+
+# Split ctrn into separate data.frame
+ctrn$index.donor <- ctrn$DONR == "1"
+ctrn.reg <- ctrn[ctrn$index.donor, ]
+ctrn.class <- ctrn; rm(ctrn)
+
+# Save data
+save(ctrn.reg, ctrn.class, ctrn.og, 
+     file = file.path(getwd(), "charityData.RData"))
+```
+    
+```{r Ex1base7, indent = "    ", include = F}
+# Load data
+load(file = file.path("C:/Users/michael.gilbert/Dropbox/R", 
+                      "charityData.RData"))
+```
+    
+    Briefly describe any data preparation steps that you have taken. Short sentences and bullet points are fine. From reading your response, I should understand what changes have been made to the data from its raw form (in the CSV file) to the form that you use to train your models. Items to address include:
+    
+    (a) How did you address missing values?
+    
+    \ 
+    
+    Missing values were addressed by using the `R` package `missForest` with the function by the same name. The function works on both numeric and factor (categorical) variables. The parameter for `ntree` was set to 400. The resulting out-of-bag error was `14.73%`.
+    
+    The variable `GENDER` appeared to contain two incorrect classes: `A` and `C`. These classes were set to `NA` _rather than_ to `U` (unknown). Setting them to `NA` allowed them to be imputed by `missForest`.
+    
+    \ 
+    
+    (b) Are there any derived or transformed variables that you added to the dataset?
+    
+    \ 
+    
+    Yes, there are three derived variables:
+    
+    * `PROMGIFT` is `NUMPROM` divided by `NGIFTALL`, rounded to the nearest integer. This was to look at the number of promotions-to-gifts ratio. The rounding occured since a donor cannot (for example) receive `3.14` promotions.
+    * `GIFTPROM` is `NGIFTALL` divided by `NUMPROM` and is closer to a "response rate" of the number of lifetime gifts-to-promotions. 
+    * `MEANAMT` is `RAMNTALL` divided by `NGIFTALL` to come up with a mean amount donated per donation (note: another student mentioned this variable on the discussion board, so I take zero credit for coming up with this).
+    
+    The downside to `PROMGIFT` and `GIFTPROM` is that they both implicitly assume a donor must first receive a promotion to give a gift. In reality, a donor might give an initial gift, then never donate again (even after receiving multiple promotions).
+    
+    \ 
+    
+    (c) Are there any variables you have chosen to remove from the dataset?
+    
+    \ 
+    
+    Yes, the variables `RFA_96` and `RFA_97` were removed from the dataset. Both of these variables are concatenated "intelligent" strings. They were split into component parts and their components included in the dataset. After imputation, the variables could be reconstructed by concatenating them again. However, the value here was unclear.
+    
+    \ 
+    
+2. Strategy for Model Validation
+    
+    For this assignment, you will employ _k_-fold cross-validation and a hold-out test dataset for model validation and selection.
+    
+    (a) _Hold-Out Test Set_: The first step you should take is to sample 25% of the observations from Exercise 1 to form a hold-out test set. This data will be referred to as the __Test Set__ for the remainder of this assignment. Report the number of observations and the distribution of response values in the Test Set. The data in the Test Set should not be used until Exercise 4 of this assignment.
+    
+    \ 
+    
+    The code used to create the flag for the _Test Set_ is included in `1` above. The number of observations and distribution of response values in the _Test Set_ is shown below:
+    
+```{r Ex2a1, indent = "    "}
+# Summary statistics
+summary(ctrn.reg$index.test)
+
+# Compare split to target
+round(mean(ctrn.reg$index.test), digits = 4)
+```
+    
+    There are `916` observations where `index.test = TRUE` and `2768` observations where `index.test = FALSE`. These sum to `3684` observations, which matches the number of observations where `DONR == 1`. The mean value of `index.test` is `0.2486`, which is a close approximation to the target value of `0.2500`.
+    
+    \ 
+    
+    (b) _k-Fold Cross-Validation_: The remaining 75% of the observations will be referred to as the __Training Set__ for the remainder of this assignment. Report the number of observations and the distribution of the response values in the Training Set. In Exercises 3 and 4, you will apply the method of _k_-fold cross-validation to the data in the Training Set.
+    
+    \ 
+    
+    The code used to create the flag for the _Training Set_ is included in `1` above. The number of observations and distribution of response values in the _Training Set_ is shown below:
+    
+```{r Ex2b1, indent = "    "}
+# Summary statistics
+summary(ctrn.reg$index.test)
+
+# Compare split to target
+round(1 - mean(ctrn.reg$index.test), digits = 4)
+```
+    
+    There are `916` observations where `index.test = TRUE` and `2768` observations where `index.test = FALSE`. These sum to `3684` observations, which matches the number of observations where `DONR == 1`. The mean value of `1 - index.test` is `0.7514`, which is a close approximation to the target value of `0.7500`.
+    
+    \ 
+    
+3. Model Fitting
+    
+    Use `R` to develop various models for the response variable `DAMT`. The variables `ID` and `DONR` are not to be used as predictors. Fit at least one model from each of the following four categories. Each model should be fit to the Training Set using the method of _k_-fold cross-validation.
+    
+    \ 
+    
+```{r Ex3base1, indent = "    "}
+#------------------------------------------------------------------------------
+# Staging & Prep
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Column Names - Excluding Response & Index Variables
+#--------------------------------------
+
+# All
+ctrn.reg.cn <- grep("^DONR|^DAMT|^index.", colnames(ctrn.reg), 
+                    value = T, invert = T)
+
+# Numeric
+ctrn.reg.cn.num <- grep("^DONR|^DAMT|^index.", 
+                        colnames(ctrn.reg[, !sapply(ctrn.reg, is.factor)]), 
+                        value = T, invert = T)
+
+# Factor
+ctrn.reg.cn.fac <- grep("^DONR|^DAMT|^index.", 
+                        colnames(ctrn.reg[, sapply(ctrn.reg, is.factor)]), 
+                        value = T, invert = T)
+
+#--------------------------------------
+# Initial Model Formula
+#--------------------------------------
+
+# Specify model formula to exclude these
+ctrn.reg.form <- paste("DAMT ~ ", paste(ctrn.reg.cn, collapse = " + "), 
+                       sep = "")
+```
+    
+    \ 
+    
+    (a) Simple linear regression (ISLR Section 3.1)
+    
+    \ 
+    
+```{r Ex3a1, indent = "    "}
+#==============================================================================
+# SLR
+#==============================================================================
+
+# Correlation on training set
+ctrn.reg.cor <- t(cor(ctrn.reg$DAMT[!ctrn.reg$index.test], 
+                      ctrn.reg[!ctrn.reg$index.test, ctrn.reg.cn.num]))
+ctrn.reg.cor <- as.data.frame(ctrn.reg.cor[order(-ctrn.reg.cor[, 1]), ])
+names(ctrn.reg.cor)[1] <- "Correlation"
+head(ctrn.reg.cor)
+tail(ctrn.reg.cor)
+
+#------------------------------------------------------------------------------
+# SLR | Model 1
+#------------------------------------------------------------------------------
+
+# Build model
+ctrn.reg.slr.m1 <- glm(DAMT ~ LASTGIFT, 
+                       data = ctrn.reg[!ctrn.reg$index.test, ], 
+                       family = gaussian)
+
+# Calculate CV MSE, k = 10
+set.seed(123)
+ctrn.reg.slr.m1.cv.mse <- cv.glm(ctrn.reg[!ctrn.reg$index.test, ], 
+                                 ctrn.reg.slr.m1, K = 10)$delta[1]
+round(ctrn.reg.slr.m1.cv.mse, digits = 4)
+
+# Summary statistics
+summary(ctrn.reg.slr.m1)
+
+#------------------------------------------------------------------------------
+# SLR | Model 2
+#------------------------------------------------------------------------------
+
+# Build model
+ctrn.reg.slr.m2 <- glm(DAMT ~ GIFTPROM_T75, 
+                       data = ctrn.reg[!ctrn.reg$index.test, ], 
+                       family = gaussian)
+
+# Calculate CV MSE, k = 10
+set.seed(123)
+ctrn.reg.slr.m2.cv.mse <- cv.glm(ctrn.reg[!ctrn.reg$index.test, ], 
+                                 ctrn.reg.slr.m2, K = 10)$delta[1]
+round(ctrn.reg.slr.m2.cv.mse, digits = 4)
+
+# Summary statistics
+summary(ctrn.reg.slr.m2)
+```
+    
+    \ 
+    
+    __Comments__: The simple linear regression (SLR) models were based on correlation between the response variable `DAMT` and numeric variables _on the training set_. The correlation values were stored in a `data.frame()`, then ordered from greatest to least. The models were fit to data in the regression training set.
+    
+    The correlation values for the first five and last five observations were examined with the `head()` and `tail()` functions. The strongest positive correlation was seen in `LASTGIFT_T99` and other associated transformations. With model simplicity in mind, `LASTGIFT` was used as the difference between it and `LASTGIFT_T99` was extremely small (~0.7 percentage points). The strongest negative correlation was seen in `GIFTPROM_T75` and associated transformations.
+    
+    For SLR Model 1, the _k_-Fold MSE is `69.1460` with an AIC of `19556`. For SLR Model 2, the _k_-Fold MSE is `117.7036` with an AIC of `21053`. By both of these measures, SLR Model 1 performs better (lower MSE, lower AIC).
+    
+    \ 
+    
+    (b) Multiple linear regression with subset selection (ISLR Section 6.1)
+    
+    \ 
+    
+    __Note__: The `predict.regsubsets` function would cause the loop to return a "subscript out of bounds error" when used on the full `ctrn.reg` dataset. The only way the loop was able to execute, was specifying a smaller number of variables in `varsToUse` and setting `method = "forward"`.
+    
+    \ 
+    
+```{r Ex3b1, indent = "    ", warning = F}
+#==============================================================================
+# MLR
+#==============================================================================
+
+# MLR with best subset selection (two models)
+
+# Create predict function
+predict.regsubsets = function(object,newdata,id,...)
+{
+    form = as.formula(object$call[[2]])
+    mat = model.matrix(form, newdata)
+    coefi = coef(object, id = id)
+    xvars = names(coefi)
+    result = mat[, xvars] %*% coefi
+    return(result)
+}
+
+# Create a matrix to hold the k-fold MSE
+# One row for each fold (k columns), one column for each size model
+# Initialize with all NAs
+k = 10
+set.seed(123)
+ctrn.reg$fold = NA
+ctrn.reg$fold[!ctrn.reg$index.test] <- sample(1:k, sum(!ctrn.reg$index.test), 
+                                              replace = T)
+table(ctrn.reg$fold, useNA = "ifany")
+barplot(table(ctrn.reg$fold), xlab = "Fold #", ylab = "Count")
+
+# Specify variables eligible to use in model
+varsToUse <- (ctrn.reg.cn)[1:29]
+maxVars = length(varsToUse)
+kValErrors = matrix(NA, k, maxVars, dimnames = list(paste("Fold", 1:k), 
+                                                    paste(1:maxVars, "Vars")))
+
+# Define formula
+form <- paste("DAMT ~ ", paste(varsToUse, collapse = " + "), sep = "")
+
+# Loop over the folds
+for (kk in 1:k)
+{
+    
+    # Train on all folds except fold kk (defined by ctrn.reg$Fold != kk).
+    index.train = ctrn.reg$fold != kk & !ctrn.reg$index.test
+    regfit_bestCV = regsubsets(as.formula(form), 
+                               data = ctrn.reg[index.train, ],
+                               nvmax = maxVars, method = "forward")
+    # Loop over number of variables (model size).
+    index.val = ctrn.reg$fold == kk & !ctrn.reg$index.test
+    for (jj in 1:maxVars)
+    {
+        # Predict on validation folds (Fold == kk) and calculate validation MSE
+        kValPred = predict(regfit_bestCV, ctrn.reg[index.val, ], id = jj)
+        kValErrors[kk, jj] = mean((ctrn.reg$DAMT[index.val] - kValPred)^2)
+    }
+}
+
+# Average cv_errors down the columns using the apply() method
+meanValError = apply(kValErrors, 2, mean)
+par(mfrow=c(1,1))
+plot(meanValError, type = "b", 
+     main = "Validation Data", 
+     xlab = "# Variables", 
+     ylab = "MSE")
+bestModel = which.min(meanValError)
+points(meanValError, pch = 21, bg = "grey")
+points(bestModel, meanValError[bestModel], pch = 21, bg = "red")
+points(5, meanValError[5], pch = 21, bg = "green")
+
+#------------------------------------------------------------------------------
+# MLR | Model 1
+#------------------------------------------------------------------------------
+
+# 5 Variable Model
+varsSelect = array(dim = 0)
+for (kk in 1:k)
+{
+  tmpFit = regsubsets(as.formula(form),
+                      data = ctrn.reg[ctrn.reg$fold != kk, ], 
+                      nvmax = maxVars, method = "forward")
+  tmpSummary = summary(tmpFit)
+  varsSelect = rbind(varsSelect, tmpSummary$outmat[5, ])
+}
+
+# Train 5-variable model on all folds of training data.
+my5VarModel = regsubsets(as.formula(form), 
+                         data = ctrn.reg[!ctrn.reg$index.test, ], 
+                         nvmax = 5, method = "forward")
+
+# k-Fold MSE for 5-variable model
+kFoldMSE_5 = meanValError[5]
+print(kFoldMSE_5)
+
+#------------------------------------------------------------------------------
+# MLR | Model 2
+#------------------------------------------------------------------------------
+
+# 14 Variable Model
+varsSelect = array(dim = 0)
+for (kk in 1:k)
+{
+  tmpFit = regsubsets(as.formula(form),
+                      data = ctrn.reg[ctrn.reg$fold != kk, ], 
+                      nvmax = maxVars, method = "forward")
+  tmpSummary = summary(tmpFit)
+  varsSelect = rbind(varsSelect, tmpSummary$outmat[14, ])
+}
+
+# Train 14-variable model on all folds of training data.
+my14VarModel = regsubsets(as.formula(form), 
+                          data = ctrn.reg[!ctrn.reg$index.test, ], 
+                          nvmax = 14, method = "forward")
+
+# k-Fold MSE for 5-variable model
+kFoldMSE_14 = meanValError[14]
+print(kFoldMSE_14)
+
+#------------------------------------------------------------------------------
+# MLR | Model 3
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Initial Model
+#--------------------------------------
+
+# Build model
+ctrn.reg.mlr.m3 <- regsubsets(as.formula(ctrn.reg.form), 
+                              data = ctrn.reg[!ctrn.reg$index.test, ], 
+                              nvmax = ncol(ctrn.reg), method = "forward")
+
+# Store minimum value and number of variables
+ctrn.reg.mlr.m3.bic.val <- min(summary(ctrn.reg.mlr.m3)$bic)
+ctrn.reg.mlr.m3.bic.var <- which.min(summary(ctrn.reg.mlr.m3)$bic)
+
+# View plot of BIC values at different model sizes
+plot(summary(ctrn.reg.mlr.m3)$bic[1:40], type = "l",
+     main = "Best Subset Selection: BIC",
+     sub = "(lower BIC is better)",
+     xlab = "Number of Variables",
+     ylab = "BIC")
+points(summary(ctrn.reg.mlr.m3)$bic[1:40], pch = 21, bg = "grey")
+points(ctrn.reg.mlr.m3.bic.var, ctrn.reg.mlr.m3.bic.val, 
+       pch = 21, bg = "red")
+
+# View variables in model; also examine variables +/- 1
+coef(ctrn.reg.mlr.m3, 8)
+coef(ctrn.reg.mlr.m3, 9)
+coef(ctrn.reg.mlr.m3, 10)
+
+#--------------------------------------
+# Model 3 - Revision 1
+#--------------------------------------
+
+# Note: drop related variables due to VIFs
+ctrn.reg.mlr.m3.v1 <- lm(DAMT ~ RFA_96_A_F + RFA_97_A_G + AGE_T95 + 
+                             LASTGIFT_T90 + NGIFTALL_rt + MAXRAMNT_rt + 
+                             RFA_96_R_N + RFA_97_A_D + PROMGIFT_T95_rt, 
+                         data = ctrn.reg[!ctrn.reg$index.test, ])
+
+# View VIFs
+vif(ctrn.reg.mlr.m3.v1)
+
+# Summary statistics
+summary(ctrn.reg.mlr.m3.v1)
+BIC(ctrn.reg.mlr.m3.v1)
+
+# Accuracy
+fit(forecast(ctrn.reg.mlr.m3.v1, 
+             newdata = ctrn.reg[ctrn.reg$index.test, ]), 
+    ctrn.reg$DAMT[ctrn.reg$index.test])
+
+#--------------------------------------
+# Model 3 - Revision 2
+#--------------------------------------
+
+# Note: drop related variables due to VIFs
+ctrn.reg.mlr.m3.v2 <- lm(DAMT ~ RFA_96_A_F + RFA_97_A_G + AGE_T95 + 
+                             LASTGIFT_T90_ln + NGIFTALL_rt + MAXRAMNT_rt + 
+                             RFA_96_R_N + RFA_97_A_D + PROMGIFT_T95_rt, 
+                         data = ctrn.reg[!ctrn.reg$index.test, ])
+
+# View VIFs
+vif(ctrn.reg.mlr.m3.v2)
+
+# Summary statistics
+summary(ctrn.reg.mlr.m3.v2)
+BIC(ctrn.reg.mlr.m3.v2)
+
+# Accuracy
+fit(forecast(ctrn.reg.mlr.m3.v2, 
+             newdata = ctrn.reg[ctrn.reg$index.test, ]), 
+    ctrn.reg$DAMT[ctrn.reg$index.test])
+
+#--------------------------------------
+# Model 3 - Revision 3
+#--------------------------------------
+
+# Note: drop related variables due to VIFs
+ctrn.reg.mlr.m3.v3 <- lm(DAMT ~ RFA_96_A_F + RFA_97_A_G + AGE_T95 + 
+                             NGIFTALL_rt + MAXRAMNT_rt + 
+                             RFA_96_R_N + RFA_97_A_D + PROMGIFT_T95_rt, 
+                         data = ctrn.reg[!ctrn.reg$index.test, ])
+
+# View VIFs
+vif(ctrn.reg.mlr.m3.v3)
+
+# Summary statistics
+summary(ctrn.reg.mlr.m3.v3)
+BIC(ctrn.reg.mlr.m3.v3)
+
+# Accuracy
+fit(forecast(ctrn.reg.mlr.m3.v3, 
+             newdata = ctrn.reg[ctrn.reg$index.test, ]), 
+    ctrn.reg$DAMT[ctrn.reg$index.test])
+
+#--------------------------------------
+# Model 3 - Revision 4
+#--------------------------------------
+
+# Note: drop related variables due to VIFs
+ctrn.reg.mlr.m3.v4 <- lm(DAMT ~ RFA_96_A_F + RFA_97_A_G + AGE_T95 + 
+                             MAXRAMNT_rt + RFA_96_R_N + RFA_97_A_D + 
+                             PROMGIFT_T95_rt, 
+                         data = ctrn.reg[!ctrn.reg$index.test, ])
+
+# View VIFs
+vif(ctrn.reg.mlr.m3.v4)
+
+# Summary statistics
+summary(ctrn.reg.mlr.m3.v4)
+BIC(ctrn.reg.mlr.m3.v4)
+
+# Accuracy
+fit(forecast(ctrn.reg.mlr.m3.v4, 
+             newdata = ctrn.reg[ctrn.reg$index.test, ]), 
+    ctrn.reg$DAMT[ctrn.reg$index.test])
+```
+    
+    \ 
+    
+    (c) Shrinkage models (ISLR Section 6.2)
+    
+    \ 
+    
+```{r Ex3c1, indent = "    "}
+#==============================================================================
+# Lasso
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Lasso | Training Set
+#------------------------------------------------------------------------------
+
+# Create model.matrix()
+ctrn.reg.lasso.train.x <- model.matrix(as.formula(ctrn.reg.form), 
+                                data = ctrn.reg[!ctrn.reg$index.test, ])[, -1]
+ctrn.reg.lasso.train.y <- ctrn.reg$DAMT[!ctrn.reg$index.test]
+
+# Validate no NA values
+sum(is.na(ctrn.reg.lasso.train.x))
+sum(is.na(ctrn.reg.lasso.train.y))
+
+# Validate dimensions
+length(ctrn.reg.lasso.train.x[, 1]) == length(ctrn.reg.lasso.train.y)
+
+#------------------------------------------------------------------------------
+# Lasso | Test Set
+#------------------------------------------------------------------------------
+
+# Create model.matrix()
+ctrn.reg.lasso.test.x <- model.matrix(as.formula(ctrn.reg.form), 
+                                data = ctrn.reg[ctrn.reg$index.test, ])[, -1]
+ctrn.reg.lasso.test.y <- ctrn.reg$DAMT[ctrn.reg$index.test]
+
+# Validate no NA values
+sum(is.na(ctrn.reg.lasso.test.x))
+sum(is.na(ctrn.reg.lasso.test.y))
+
+# Validate dimensions
+length(ctrn.reg.lasso.test.x[, 1]) == length(ctrn.reg.lasso.test.y)
+
+#------------------------------------------------------------------------------
+# Lasso | Model 1
+#------------------------------------------------------------------------------
+
+# Build CV model, k = 10
+set.seed(123)
+ctrn.reg.lasso.m1.cv <- cv.glmnet(ctrn.reg.lasso.train.x, 
+                                  ctrn.reg.lasso.train.y, 
+                                  alpha = 1)
+
+# Plot CV Lasso
+plot(ctrn.reg.lasso.m1.cv)
+
+# Identify minimum value of lambda
+ctrn.reg.lasso.m1.cv.lmv <- ctrn.reg.lasso.m1.cv$lambda.min
+round(ctrn.reg.lasso.m1.cv.lmv, digits = 4)
+
+# Find index corresponding to minimum value of lambda
+ctrn.reg.lasso.m1.cv.lidx <- which(ctrn.reg.lasso.m1.cv$lambda == 
+                                       ctrn.reg.lasso.m1.cv.lmv)
+ctrn.reg.lasso.m1.cv.lidx
+
+# Calculate CV MSE
+ctrn.reg.lasso.m1.cv.mse <- ctrn.reg.lasso.m1.cv$cvm[ctrn.reg.lasso.m1.cv.lidx]
+round(ctrn.reg.lasso.m1.cv.mse, digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: A Lasso model was chosen to represent the Shrinkage model. The model was fit to data in the regression training set. Using `set.seed(123)`, the minimum value of lambda was `1.0981` which corresponded to an index value of `23`. The _k_-Fold MSE is `64.9126`.
+    
+    \ 
+    
+    (d) Nonlinear models (ISLR Chapter 7) or Tree-based models (ISLR Chapter 8)
+    
+    \ 
+    
+```{r Ex3d1, indent = "    "}
+#==============================================================================
+# Regression Tree
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Regression Tree | Model 1
+#------------------------------------------------------------------------------
+
+# Build model
+ctrn.reg.tree.m1 <- tree(as.formula(ctrn.reg.form), 
+                         data = ctrn.reg[!ctrn.reg$index.test, ])
+
+# Summary statistics
+summary(ctrn.reg.tree.m1)
+
+# Plot tree
+plot(ctrn.reg.tree.m1)
+text(ctrn.reg.tree.m1, pretty = 0)
+
+# Build CV model
+set.seed(123)
+ctrn.reg.tree.m1.cv <- cv.tree(ctrn.reg.tree.m1)
+ctrn.reg.tree.m1.cv
+
+# Store minimum value and tree size
+ctrn.reg.tree.m1.cv.ts <- 
+    ctrn.reg.tree.m1.cv$size[which.min(ctrn.reg.tree.m1.cv$dev)]
+ctrn.reg.tree.m1.cv.mv <- min(ctrn.reg.tree.m1.cv$dev)
+
+# Plot CV tree results
+plot(ctrn.reg.tree.m1.cv$size, ctrn.reg.tree.m1.cv$dev, type = "b", 
+     main = "Charity Data: Deviance by Size", 
+     sub = "Cross-Validated Tree Results", 
+     ylab = "Deviance", 
+     xlab = "Size")
+points(ctrn.reg.tree.m1.cv$size, ctrn.reg.tree.m1.cv$dev, 
+       pch = 21, bg = "grey")
+points(ctrn.reg.tree.m1.cv.ts, ctrn.reg.tree.m1.cv.mv, 
+       pch = 21, bg = "red")
+
+# Compute CV MSE
+ctrn.reg.tree.m1.cv.mse <- (ctrn.reg.tree.m1.cv.mv / 
+                                nrow(ctrn.reg[!ctrn.reg$index.test, ]))
+round(ctrn.reg.tree.m1.cv.mse, digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: The original tree selected a model with `5` variables and `9` terminal nodes. After conducting cross-validation, the best model selected (defined by the lowest value of deviance) used `4` variables. The _k_-Fold MSE is `79.0777`. The pruned tree is assigned and used in Exercise 4.
+    
+    \ 
+    
+    For each model, report the form of the model you are fitting (e.g. the formula used to specify the model). Explain the reasoning for why you are fitting a model of that form (e.g. for simple linear regression, explain how you selected which predictor to use). Explain any hyper-parameter tuning that you do (e.g. tuning the value of $\lambda$ for Lasso). Report summary and diagnostic information as appropriate for each model.
+    
+    \ 
+    
+4. Model Validation
+    
+    Use R to perform model validation on the models you fit in Exercise 3. The model validation process is outlined below.
+    
+    (a) Any decisions made in the model building process (Exercise 3) need to be made solely on the Training Set using the method of _k_-fold cross-validation. Examples include how many variables to be used in multiple linear regression with subset selection, what value of $\lambda$ to be used for Lasso, or what values of hyperparameters to use for tree-based models.
+    
+    (b) Generate a table that has one row for each model you fit in Exercise 3. The table should have four columns (at minimum, you can include additional columns that you would like): Model Name, _k_-fold MSE, Training Set MSE, and Test Set MSE.
+    
+    (c) For the _k_-fold MSE, fit the model and calculate the mean MSE using _k_-fold cross-validation. In most (or all) cases you can use a built-in cross-validation function for the model (e.g. `cv.glmnet`).
+    
+    (d) For the Training Set MSE, fit the model (coefficients) to all of the data in the Training Set; be sure to follow the directions in Exercise 4a. Use the model to predict DAMT for all of the individuals in the Training Set, and calculate the MSE for these individuals.
+    
+    (e) For the Test Set MSE, use the model as trained in Exercise 4d to predict DAMT for all of the individuals in the Test Set. Note that you do not retrain or refit the model to the Test Set, nor do you re-tune the hyperparameters. The coefficients and hyper-parameters should not change from Exercise 4d. Calculate the MSE from the Test Set predictions.
+    
+    \ 
+    
+    __Note__: The entire process for Exercise 4, parts `(a)` through `(e)` is below. Due to the structure of coding, it was much easier to walk through everything at the end, rather than at each sub-section.
+    
+    __Comments__: Decisions made in the model building process were based solely on the Training Set using the method of _k_-Fold cross-validation. Explanations of such decisions followed the code in _Exercise 3_.
+    
+    The next section includes model coefficients (when available) and variables. If a subsequent model needs to be built to compute the train MSE and test MSE (e.g. Lasso model) that is done as well, however the actual computation of MSE does not occur until the next chunk.
+    
+```{r Ex4base1, indent = "    "}
+#==============================================================================
+# Fit Models
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# SLR
+#------------------------------------------------------------------------------
+# Model fit earlier, but test MSE and train MSE not computed
+
+# SLR - Model 1 - Training Coefficients
+coef(ctrn.reg.slr.m1)
+
+# SLR - Model 2 - Training Coefficients
+coef(ctrn.reg.slr.m2)
+
+#------------------------------------------------------------------------------
+# MLR
+#------------------------------------------------------------------------------
+
+# Model fit earlier, but test MSE and train MSE not computed
+
+#------------------------------------------------------------------------------
+# Lasso
+#------------------------------------------------------------------------------
+# Fit model using glmnet()
+ctrn.reg.lasso.m1 <- glmnet(ctrn.reg.lasso.train.x, 
+                            ctrn.reg.lasso.train.y, 
+                            alpha = 1)
+
+# Lasso - Training Coefficients
+ctrn.reg.lasso.m1.train.coef <- predict(ctrn.reg.lasso.m1, 
+                                        type = "coefficients", 
+                                        s = ctrn.reg.lasso.m1.cv.lmv)
+
+# Lasso - Extract Training Coefficients
+temp <- summary(ctrn.reg.lasso.m1.train.coef)
+ctrn.reg.lasso.m1.train.coef <- data.frame(Variable = 
+                                    rownames(ctrn.reg.lasso.m1.train.coef)
+                                    [temp$i], Coefficient = temp$x)
+ctrn.reg.lasso.m1.train.coef; rm(temp)
+
+#------------------------------------------------------------------------------
+# Regression Tree
+#------------------------------------------------------------------------------
+
+# Prune tree based on CV tree results
+ctrn.reg.tree.m1.prune <- prune.tree(ctrn.reg.tree.m1, best = 4)
+
+# Plot pruned tree
+plot(ctrn.reg.tree.m1.prune)
+text(ctrn.reg.tree.m1.prune, pretty = 0)
+
+# Summary statistics
+summary(ctrn.reg.tree.m1.prune)
+```
+    
+    \ 
+    
+    __Comments__: The coefficients for the Lasso model above clearly show that some selected variables are collinear. This is observed from the suffixes attached to the variable names.
+    
+    \ 
+    
+```{r Ex4base2, indent = "    "}
+#==============================================================================
+# MSE Values
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# SLR
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 1
+#--------------------------------------
+# Train MSE
+ctrn.reg.slr.m1.train.mse <- mean((ctrn.reg$DAMT - 
+                                       predict(ctrn.reg.slr.m1, ctrn.reg)) 
+                                  [!ctrn.reg$index.test]^2)
+
+# Test MSE
+ctrn.reg.slr.m1.test.mse <- mean((ctrn.reg$DAMT - 
+                                      predict(ctrn.reg.slr.m1, ctrn.reg)) 
+                                 [ctrn.reg$index.test]^2)
+
+#--------------------------------------
+# Model 2
+#--------------------------------------
+# Train MSE
+ctrn.reg.slr.m2.train.mse <- mean((ctrn.reg$DAMT - 
+                                       predict(ctrn.reg.slr.m2, ctrn.reg)) 
+                                  [!ctrn.reg$index.test]^2)
+
+# Test MSE
+ctrn.reg.slr.m2.test.mse <- mean((ctrn.reg$DAMT - 
+                                      predict(ctrn.reg.slr.m2, ctrn.reg)) 
+                                 [ctrn.reg$index.test]^2)
+
+#------------------------------------------------------------------------------
+# MLR
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 1
+#--------------------------------------
+
+# Train MSE
+trnPred = predict(my5VarModel, ctrn.reg[!ctrn.reg$index.test, ], id = 5)
+trnMSE_5 = mean((ctrn.reg$DAMT[!ctrn.reg$index.test] - trnPred)^2)
+
+# Test MSE
+testPred = predict(my5VarModel, ctrn.reg[ctrn.reg$index.test, ], id = 5)
+testMSE_5 = mean((ctrn.reg$DAMT[ctrn.reg$index.test] - testPred)^2)
+
+#--------------------------------------
+# Model 2
+#--------------------------------------
+
+# Train MSE
+trnPred = predict(my14VarModel, ctrn.reg[!ctrn.reg$index.test, ], id = 14)
+trnMSE_14 = mean((ctrn.reg$DAMT[!ctrn.reg$index.test] - trnPred)^2)
+
+# Test MSE
+testPred = predict(my14VarModel, ctrn.reg[ctrn.reg$index.test, ], id = 14)
+testMSE_14 = mean((ctrn.reg$DAMT[ctrn.reg$index.test] - testPred)^2)
+
+#------------------------------------------------------------------------------
+# Lasso
+#------------------------------------------------------------------------------
+# Train MSE
+ctrn.reg.lasso.m1.train <- predict(ctrn.reg.lasso.m1, 
+                                   s = ctrn.reg.lasso.m1.cv.lmv, 
+                                   newx = ctrn.reg.lasso.train.x)
+ctrn.reg.lasso.m1.train.mse <- mean((ctrn.reg.lasso.m1.train - 
+                                         ctrn.reg.lasso.train.y)^2)
+
+# Test MSE
+ctrn.reg.lasso.m1.test <- predict(ctrn.reg.lasso.m1, 
+                                  s = ctrn.reg.lasso.m1.cv.lmv, 
+                                  newx = ctrn.reg.lasso.test.x)
+ctrn.reg.lasso.m1.test.mse <- mean((ctrn.reg.lasso.m1.test - 
+                                        ctrn.reg.lasso.test.y)^2)
+
+#------------------------------------------------------------------------------
+# Regression Tree
+#------------------------------------------------------------------------------
+# Train MSE
+ctrn.reg.tree.m1.train.mse <- mean((ctrn.reg$DAMT - 
+                                        predict(ctrn.reg.tree.m1.prune, 
+                                                ctrn.reg))
+                                   [!ctrn.reg$index.test]^2)
+
+# Test MSE
+ctrn.reg.tree.m1.test.mse <- mean((ctrn.reg$DAMT - 
+                                       predict(ctrn.reg.tree.m1.prune, 
+                                               ctrn.reg))
+                                  [ctrn.reg$index.test]^2)
+```
+    
+    \ 
+    
+    __Comments__: As shown in the table below, the Lasso model has a large spread in MSE between the train and test sets. While this is not ideal, it also is not surprising given the clear collinear variables included in the trained model.
+    
+    \ 
+```{r Ex4b2, indent = "    "}
+#==============================================================================
+# Model Table
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Names
+#------------------------------------------------------------------------------
+# Create model names
+name.slr.m1 <- "SLR: Model 1"
+name.slr.m2 <- "SLR: Model 2"
+name.mlr.m1 <- "MLR: Model 1"
+name.mlr.m2 <- "MLR: Model 2"
+name.lasso.m1 <- "Lasso: Model 1"
+name.tree.m1 <- "Regression Tree: Model 1"
+
+# Create column of model names
+table.model.name <- rbind(name.slr.m1, name.slr.m2, name.mlr.m1, name.mlr.m2, 
+                          name.lasso.m1, name.tree.m1)
+
+#------------------------------------------------------------------------------
+# Table
+#------------------------------------------------------------------------------
+# Create rows for MSE values
+table.slr.m1 <- cbind(ctrn.reg.slr.m1.cv.mse, ctrn.reg.slr.m1.train.mse, 
+                      ctrn.reg.slr.m1.test.mse)
+table.slr.m2 <- cbind(ctrn.reg.slr.m2.cv.mse, ctrn.reg.slr.m2.train.mse, 
+                      ctrn.reg.slr.m2.test.mse)
+table.mlr.m1 <- cbind(kFoldMSE_5, trnMSE_5, testMSE_5)
+table.mlr.m2 <- cbind(kFoldMSE_14, trnMSE_14, testMSE_14)
+table.lasso.m1 <- cbind(ctrn.reg.lasso.m1.cv.mse, ctrn.reg.lasso.m1.train.mse, 
+                        ctrn.reg.lasso.m1.test.mse)
+table.tree.m1 <- cbind(ctrn.reg.tree.m1.cv.mse, ctrn.reg.tree.m1.train.mse, 
+                       ctrn.reg.tree.m1.test.mse)
+
+# Bind rows for MSE values
+table.model.val <- as.data.frame(rbind(table.slr.m1, table.slr.m2, 
+                                       table.mlr.m1, table.mlr.m2, 
+                                       table.lasso.m1, table.tree.m1))
+
+# Bind table
+table.model <- data.frame(table.model.name, table.model.val)
+
+# Re-assign rownames
+rownames(table.model) <- seq(1, nrow(table.model))
+
+# Rename columns
+colnames(table.model)[1] <- "Model Name"
+colnames(table.model)[2] <- "k-Fold MSE"
+colnames(table.model)[3] <- "Train MSE"
+colnames(table.model)[4] <- "Test MSE"
+
+# View table
+table.model
+```
+    
+    \ 
+    
+5. Model Selection
+    
+    Use the table you generated in Exercise 4 to select the best model to be used in Part 4 of the Charity Project.
+    
+    (a) Comment on the predictive accuracy you get from your models.
+    
+    \ 
+    
+    __Comments__: Starting with the `SLR` models, Model 1 performed much better across the board then Model 2. This is not surprising, as the variable used in Model 1 had a much stronger correlation coefficient to `DAMT` than in Model 2. 
+    
+    For the `MLR` models, Model 1 similarly performed better than Model 2. Model 1 used `5` variables, while Model 2 used `14`. Here the simpler (and more parsimonious) model performed better on the Test Set than the more complex model.
+    
+    For the `Lasso` model, the model did not perform well on the Test Set relative to the _k_-Fold or Train Set. This suggests overfitting. However, a more likely (or dual) culprit is the clear collinearity in variables chosen to be in the model (see in the variable suffixes).
+    
+    Finally, for the `Regression Tree` model, the model did not perform well on the Test Set relative to the _k_-Fold or Train Set.
+    
+    \ 
+    
+    (b) Explain which of your models you select as being the best performing model and why. Note that model selection should be based on the _k_-fold and Test Set MSE values. If two models have similar MSE values, then the model with fewer predictors should be selected.
+    
+    \ 
+    
+    __Comments__: Quite surprisingly, `SLR` Model 1 had the closest _k_-Fold MSE and Test MSE values. Though this portion does not take Train MSE into account when selecting a model, `SLR` Model 1 had the tightest range amongst all models.
+    
+    \ 
+    
+```{r FIN}
+# FIN
+
+# Session info
+sessionInfo()
+```
