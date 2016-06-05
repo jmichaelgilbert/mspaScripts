@@ -1,0 +1,749 @@
+---
+title: '422_Programming_Assignment_05'
+author: 'Michael Gilbert'
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+Workspace cleanup and prep:
+
+```{r setup.R, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(ISLR)
+library(knitr)
+library(randomForest)
+library(reshape2)
+library(tree)
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+## ISLR, Section 8.4
+### Exercise 8 (p. 347 of PDF)
+
+In the lab, a classification tree was applied to the `Carseats` data set after converting `Sales` into a qualitative response variable. Now we will seek to predict `Sales` using regression trees and related approaches, treating the response as a quantitative variable.
+
+```{r Sec8Ex8base1}
+# Assign data
+cs <- Carseats
+```
+
+(a) Split the data set into a training set and a test set.
+    
+    \ 
+    
+```{r Sec8Ex8a1, indent = "    "}
+# Split 75/25 
+set.seed(123)
+cs$index.test <- as.logical(rbinom(nrow(cs), 1, 0.25))
+cs$index.train <- !cs$index.test
+
+# Examine split
+mean(cs$index.train)
+mean(cs$index.test)
+```
+    
+    \ 
+    
+    __Comments__: Data were randomly split 75/25. The random split closely approximates the target split with `75.75%` of observations appearing in the training set and `24.25%` of observations appearing in the test set.
+    
+    \ 
+    
+(b) Fit a regression tree to the training set. Plot the tree, and interpret the results. What test MSE do you obtain?
+    
+    \ 
+    
+```{r Sec8Ex8b1, indent = "    "}
+# Fit regression tree
+cs.tree <- tree(Sales ~ . -index.test -index.train, data = cs, 
+                subset = cs$index.train)
+
+# Summary statistics
+summary(cs.tree)
+
+# Plot tree
+plot(cs.tree)
+text(cs.tree, pretty = 0)
+
+# Compute test MSE
+cs.tree.pred <- predict(cs.tree, newdata = cs[cs$index.test, ])
+cs.tree.pred.mse <- mean((cs.tree.pred - cs[cs$index.test, "Sales"])^2)
+round(cs.tree.pred.mse, digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: The test MSE value is `3.7766`. The tree indicates the left-hand branch corresponds to a `ShelveLoc` (the quality of the shelving location for the car seats at each site) of bad and medium; the right-hand branch corresponds to all remaining classes of `ShelveLoc` (`Good`). 
+    
+    The next split occurs on price. For `ShelveLoc` values of `Bad` or `Medium`, the left-hand branch splits on prices less than `105.50`, and the right-hand branch splits on prices greater than or equal to `105.50`.For `ShelveLoc` values of `Good`, the left-hand branch splits on prices less than `109.50`, and the right-hand branch splits on prices greater than or equal to `109.50`. The splits follow a similar pattern for other variables all the way down the tree.
+    
+    \ 
+    
+(c) Use cross-validation in order to determine the optimal level of tree complexity. Does pruning the tree improve the test MSE?
+    
+    \ 
+    
+```{r Sec8Ex8c1, indent = "    "}
+# Use CV to determine optimal level of tree complexity
+set.seed(123)
+cs.tree.cv <- cv.tree(cs.tree)
+cs.tree.cv
+
+# Store minimum value and tree size
+cs.tree.cv.size <- cs.tree.cv$size[which.min(cs.tree.cv$dev)]
+cs.tree.cv.cver <- min(cs.tree.cv$dev)
+
+# Plot CV tree results
+plot(cs.tree.cv$size, cs.tree.cv$dev, type = "b",
+     main = "Carseats: Deviance by Size",
+     sub = "Cross-Validated Tree Results",
+     ylab = "Deviance",
+     xlab = "Size")
+points(cs.tree.cv$size, cs.tree.cv$dev, pch = 21, bg = "grey")
+points(cs.tree.cv.size, cs.tree.cv.cver, pch = 21, bg = "red")
+points(cs.tree.cv$size[13], cs.tree.cv$dev[13], pch = 21, bg = "green")
+
+# Prune tree
+cs.tree.prune <- prune.tree(cs.tree, best = 4)
+
+# Summary statistics
+summary(cs.tree.prune)
+
+# Compute test MSE
+cs.tree.prune.pred <- predict(cs.tree.prune, newdata = cs[cs$index.test, ])
+cs.tree.prune.pred.mse <- mean((cs.tree.prune.pred - 
+                                    cs[cs$index.test, "Sales"])^2)
+round(cs.tree.prune.pred.mse, digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: The minimum deviance value corresponds to a tree with `17` terminal nodes, and is shown with a red dot in the plot. Since this corresponds to the same model (and same test MSE value) as the tree in the previous question, a tree with `4` terminal nodes was selected (shown with a green dot in the plot). This was the smallest value of deviance from a continued decline in deviance - the tree with `5` terminal nodes had a higher deviance value.
+    
+    The resulting test MSE is `4.5289` and pruning did not improve the tree.
+    
+    \ 
+    
+(d) Use the bagging approach in order to analyze this data. What test MSE do you obtain? Use the `importance()` function to determine which variables are most important.
+    
+    \ 
+    
+```{r Sec8Ex8d1, indent = "    "}
+# Use the bagging approach
+set.seed(123)
+cs.bag <- randomForest(Sales ~ . -index.test -index.train, data = cs,
+                       subset = cs$index.train, mtry = (ncol(cs)-3), 
+                       importance = T)
+cs.bag
+
+# View variable importance and plot
+cs.bag$importance
+varImpPlot(cs.bag)
+
+# Compute test MSE
+cs.bag.pred <- predict(cs.bag, newdata = cs[cs$index.test, ])
+cs.bag.pred.mse <- mean((cs.bag.pred - cs[cs$index.test, "Sales"])^2)
+round(cs.bag.pred.mse, digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: Using the bagging approach results in a test MSE of `2.1709`. Unequivocally, the most important variables by both `%IncMSE` and `IncNodePurity` are `Price` and `ShelveLoc`. 
+    
+    \ 
+    
+(e) Use random forests to analyze this data. What test MSE do you obtain? Use the `importance()` function to determine which variables are most important. Describe the effect of _m_, the number of variables considered at each split, on the error rate obtained.
+    
+    \ 
+    
+```{r Sec8Ex8e1, indent = "    "}
+#------------------------------------------------------------------------------
+# Random Forest | M = 3
+#------------------------------------------------------------------------------
+# Use the random forest approach
+set.seed(123)
+cs.rf.m1 <- randomForest(Sales ~ . -index.test -index.train, data = cs, 
+                         subset = cs$index.train, mtry = ((ncol(cs)-3)/3), 
+                         importance = T)
+cs.rf.m1
+
+# View variable importance and plot
+cs.rf.m1$importance
+varImpPlot(cs.rf.m1)
+
+# Compute test MSE
+cs.rf.m1.pred <- predict(cs.rf.m1, newdata = cs[cs$index.test, ])
+cs.rf.m1.pred.mse <- mean((cs.rf.m1.pred - cs[cs$index.test, "Sales"])^2)
+round(cs.rf.m1.pred.mse, digits = 4)
+
+#------------------------------------------------------------------------------
+# Random Forest | M = 5
+#------------------------------------------------------------------------------
+# Use the random forest approach
+set.seed(123)
+cs.rf.m2 <- randomForest(Sales ~ . -index.test -index.train, data = cs, 
+                         subset = cs$index.train, mtry = 5, importance = T)
+cs.rf.m2
+
+# View variable importance and plot
+cs.rf.m2$importance
+varImpPlot(cs.rf.m2)
+
+# Compute test MSE
+cs.rf.m2.pred <- predict(cs.rf.m2, newdata = cs[cs$index.test, ])
+cs.rf.m2.pred.mse <- mean((cs.rf.m2.pred - cs[cs$index.test, "Sales"])^2)
+round(cs.rf.m2.pred.mse, digits = 4)
+
+#------------------------------------------------------------------------------
+# Random Forest | M = 7
+#------------------------------------------------------------------------------
+# Use the random forest approach
+set.seed(123)
+cs.rf.m3 <- randomForest(Sales ~ . -index.test -index.train, data = cs, 
+                         subset = cs$index.train, mtry = 7, importance = T)
+cs.rf.m3
+
+# View variable importance and plot
+cs.rf.m3$importance
+varImpPlot(cs.rf.m3)
+
+# Compute test MSE
+cs.rf.m3.pred <- predict(cs.rf.m3, newdata = cs[cs$index.test, ])
+cs.rf.m3.pred.mse <- mean((cs.rf.m3.pred - cs[cs$index.test, "Sales"])^2)
+round(cs.rf.m3.pred.mse, digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: Three models were built testing various values of `M`. The first used a value of `M = 3`; the second `M = 5`; and the third `M = 7`.
+    
+    * Model 1 (`M = 3`): Test MSE of `2.7231`, with the most important variables of `Price` and `ShelveLoc`
+    * Model 2 (`M = 5`): Test MSE of `2.3308`, with the most important variables of `Price` and `ShelveLoc`
+    * Model 3 (`M = 7`): Test MSE of `2.2636`, with the most important variables of `Price` and `ShelveLoc`
+    
+    Across these three values of `M`, the larger the value of `M`, the lower the test MSE value.
+    
+    \ 
+    
+### Exercise 9 (p. 348 of PDF)
+
+This problem involves the `OJ` data set which is part of the `ISLR` package.
+
+```{r Sec8Ex9base1}
+# Assign data
+oj <- OJ
+```
+
+(a) Create a training set containing a random sample of 800 observations, and a test set containing the remaining observations.
+    
+    \ 
+    
+```{r Sec8Ex9a1, indent = "    "}
+# Split 800/1070 (nobs) 
+set.seed(123)
+oj$index.test <- as.logical(rbinom(nrow(oj), 1, (1-(800/nrow(oj)))))
+oj$index.train <- !oj$index.test
+
+# Examine split
+mean(oj$index.train)
+mean(oj$index.test)
+```
+    
+    \ 
+    
+    __Comments__: Data were randomly split, targeting `800` observations (or `74.77%`) in the training set and `270` observations (or `25.23%`) in the test set. The random split closely approximates the target split with `75.61%` of observations appearing in the training set and `24.39%` of observations appearing in the test set.
+    
+    \ 
+    
+(b) Fit a tree to the training data, with `Purchase` as the response and the other variables as predictors. Use the `summary()` function to produce summary statistics about the tree, and describe the results obtained. What is the training error rate? How many terminal nodes does the tree have?
+    
+    \ 
+    
+```{r Sec8Ex9b1, indent = "    "}
+# Fit classification tree
+oj.tree <- tree(Purchase ~ . -index.test -index.train, data = oj,
+                subset = oj$index.train)
+
+# Summary statistics
+summary(oj.tree)
+
+# Terminal nodes
+summary(oj.tree)$size
+
+# Training error rate
+round((summary(oj.tree)$misclass[1] / summary(oj.tree)$misclass[2]) * 100, 
+       digits = 2)
+```
+    
+    \ 
+    
+    __Comments__: The training misclassification error rate is `14.09%` and the tree has `11` terminal nodes. A total of `4` variables were used in tree construction.
+    
+    \ 
+    
+(c) Type in the name of the tree object in order to get a detailed text output. Pick one of the terminal nodes, and interpret the information displayed.
+    
+    \ 
+    
+```{r Sec8Ex9c1, indent = "    "}
+# Detailed text output
+oj.tree
+```
+    
+    \ 
+    
+    __Comments__: The most leftward terminal node was picked for interpretation. The tree is first split on `LoyalCH` (customer brand loyalty for `CH` or Citrus Hill) on values less than 0.5036. The tree is then split again on `LoyalCH`, _but only considering the remaining values after the first split_. If on this second split the values for `LoyalCH` are less than `0.17269`, then the tree predicts the customer purchased `MM` or Minute Maid.
+    
+    \ 
+    
+(d) Create a plot of the tree, and interpret the results.
+    
+    \ 
+    
+```{r Sec8Ex9d1, indent = "    "}
+# Plot tree
+plot(oj.tree)
+text(oj.tree, pretty = 0)
+```
+    
+    \ 
+    
+    __Comments__: The most rightward terminal node was picked for interpretation. The tree is first split on `LoyalCH` (customer brand loyalty for `CH` or Citrus Hill) on values greater than or equal to `0.5036`. The tree is then split again on `LoyalCH`, _but only considering the remaining values after the first split_. If on this second split the values for `LoyalCH` are greater than or equal to `0.764572`, then the tree predicts the customer purchased `CH` or Citrus Hill.
+    
+    \ 
+    
+(e) Predict the response on the test data, and produce a confusion matrix comparing the test labels to the predicted test labels. What is the test error rate?
+    
+    \ 
+    
+```{r Sec8Ex9e1, indent = "    "}
+# Compute confusion matrix
+oj.tree.pred <- predict(oj.tree, newdata = oj[oj$index.test, ], type = "class")
+oj.cm <- table(oj.tree.pred, oj$Purchase[oj$index.test])
+oj.cm
+
+# Test error rate
+round((1 - (oj.cm[1, 1] + oj.cm[2, 2]) / sum(oj$index.test)) * 100, digits = 2)
+```
+    
+    \ 
+    
+    __Comments__: The produced confusion matrix may be seen above. The test error rate is `21.46%`.
+    
+    \ 
+    
+(f) Apply the `cv.tree()` function to the training set in order to determine the optimal tree size.
+    
+    \ 
+    
+```{r Sec8Ex9f1, indent = "    "}
+# Use CV to determine optimal level of tree complexity
+set.seed(123)
+oj.tree.cv <- cv.tree(oj.tree, FUN = prune.misclass)
+oj.tree.cv
+```
+    
+    \ 
+    
+    __Comments__: For cross-validation with `FUN = prune.misclass`, the `dev` parameter stores the cross-validation error rate. The model of size `11` has the lowest `dev` value of `147` and can be considered the optimal tree size.
+    
+    \ 
+    
+(g) Produce a plot with tree size on the _x_-axis and cross-validated classification error rate on the _y_-axis.
+    
+    \ 
+    
+```{r Sec8Ex9g1, indent = "    "}
+# Store minimum value and tree size
+oj.tree.cv.size <- oj.tree.cv$size[which.min(oj.tree.cv$dev)]
+oj.tree.cv.cver <- min(oj.tree.cv$dev)
+
+# Plot CV tree results
+plot(oj.tree.cv$size, oj.tree.cv$dev, type = "b",
+     main = "OJ: Deviance by Size",
+     sub = "Cross-Validated Tree Results",
+     ylab = "CV Classification Error Rate",
+     xlab = "Size")
+points(oj.tree.cv$size, oj.tree.cv$dev, pch = 21, bg = "grey")
+points(oj.tree.cv.size, oj.tree.cv.cver, pch = 21, bg = "red")
+```
+    
+    \ 
+    
+(h) Which tree size corresponds to the lowest cross-validated classification error rate?
+    
+    \ 
+    
+```{r Sec8Ex9h1, indent = "    "}
+# Lowest CV classification error rate
+oj.tree.cv.size
+oj.tree.cv.cver
+```
+    
+    \ 
+    
+    __Comments__: The tree of size `11` corresponds to the lowest cross-validated classification error rate, `147`.
+    
+    \ 
+    
+(i) Produce a pruned tree corresponding to the optimal tree size obtained using cross-validation. If cross-validation does not lead to selection of a pruned tree, then create a pruned tree with five terminal nodes.
+    
+    \ 
+    
+```{r Sec8Ex9i1, indent = "    "}
+# Prune tree
+oj.tree.prune <- prune.tree(oj.tree, best = 5)
+summary(oj.tree.prune)
+```
+    
+    \ 
+    
+    __Comments__: The result from `summary(oj.tree)` chose a tree with 11 terminal nodes. The optimal tree size obtained using cross-validation similarly selected a tree with 11 terminal nodes. A pruned tree with 5 terminal nodes was created.
+    
+    \ 
+    
+(j) Compare the training error rates between the pruned and unpruned trees. Which is higher?
+    
+    \ 
+    
+```{r Sec8Ex9j1, indent = "    "}
+#------------------------------------------------------------------------------
+# Unpruned Tree
+#------------------------------------------------------------------------------
+# Training error rate
+round((summary(oj.tree)$misclass[1] / summary(oj.tree)$misclass[2]) * 100, 
+       digits = 2)
+
+#------------------------------------------------------------------------------
+# Pruned Tree
+#------------------------------------------------------------------------------
+# Training error rate
+round((summary(oj.tree.prune)$misclass[1] / summary(oj.tree.prune)$misclass[2])
+      * 100, digits = 2)
+```
+    
+    \ 
+    
+    __Comments__: The training error rate of the unpruned tree was `14.09%` whereas the training error rate of the pruned tree was `19.65%`.
+    
+    \ 
+    
+(k) Compare the test error rates between the pruned and unpruned trees. Which is higher?
+    
+    \ 
+    
+```{r Sec8Ex9k1, indent = "    "}
+#------------------------------------------------------------------------------
+# Pruned Tree
+#------------------------------------------------------------------------------
+# Compute confusion matrix
+oj.tree.prune.pred <- predict(oj.tree.prune, newdata = oj[oj$index.test, ],
+                              type = "class")
+oj.prune.cm <- table(oj.tree.prune.pred, oj$Purchase[oj$index.test])
+oj.prune.cm
+
+# Test error rate
+round((1 - (oj.prune.cm[1, 1] + oj.prune.cm[2, 2]) / sum(oj$index.test)) * 100,
+      digits = 2)
+
+#------------------------------------------------------------------------------
+# Unpruned Tree
+#------------------------------------------------------------------------------
+# Compute confusion matrix
+oj.tree.pred <- predict(oj.tree, newdata = oj[oj$index.test, ], type = "class")
+oj.cm <- table(oj.tree.pred, oj$Purchase[oj$index.test])
+oj.cm
+
+# Test error rate
+round((1 - (oj.cm[1, 1] + oj.cm[2, 2]) / sum(oj$index.test)) * 100, digits = 2)
+```
+    
+    \ 
+    
+    __Comments__: Somewhat surprisingly, the unpruned tree had a higher classification error rate of `21.46%`, while the pruned tree had a rate of `21.07%`. While surprising at first glance, it appears the simpler (pruned) model performs better - suggesting the unpruned tree may be slightly overfit.
+    
+    \ 
+    
+## ISLR, Section 10.7
+### Exercise 9 (p. 430 of PDF)
+
+Consider the `USArrests` data. We will now perform hierarchical clustering
+on the states.
+
+```{r Sec10Ex9base1, indent = "    "}
+# Assign data
+usar <- USArrests
+```
+
+(a) Using hierarchical clustering with complete linkage and Euclidean distance, cluster the states.
+    
+    \ 
+    
+```{r Sec10Ex9a1, indent = "    "}
+# Hierarchical clustering - complete linkage
+usar.hc.comp <- hclust(dist(usar), method = "complete")
+
+# Plot dendrogram
+plot(usar.hc.comp, 
+     main = "Hierarchical Clustering - Complete Linkages",
+     xlab = "", sub = "", cex = 0.9)
+```
+    
+    \ 
+    
+(b) Cut the dendrogram at a height that results in three distinct clusters. Which states belong to which clusters?
+    
+    \ 
+    
+```{r Sec10Ex9b1, indent = "    "}
+# Cut dendrogram to three distinct clusters
+usar.hc.cut <- data.frame(cutree(usar.hc.comp, 3))
+
+# Set rownames as column, set rownames as index
+usar.hc.cut$States <- rownames(usar.hc.cut)
+rownames(usar.hc.cut) <- seq(1, nrow(usar.hc.cut))
+
+# Rename column
+names(usar.hc.cut)[1] <- "Clusters"
+
+# Convert variable
+usar.hc.cut$Clusters <- factor(usar.hc.cut$Clusters)
+
+# Table
+usar.hc.cut <- dcast(usar.hc.cut, States ~ Clusters)
+
+# Replace NA values with blanks
+usar.hc.cut[is.na(usar.hc.cut)] <- ""
+
+# Rename columns
+names(usar.hc.cut)[2] <- "Cluster 1"
+names(usar.hc.cut)[3] <- "Cluster 2"
+names(usar.hc.cut)[4] <- "Cluster 3"
+
+# Print output
+usar.hc.cut
+```
+    
+    \ 
+    
+(c) Hierarchically cluster the states using complete linkage and Euclidean distance, after scaling the variables to have standard deviation one.
+    
+    \ 
+    
+```{r Sec10Ex9c1, indent = "    "}
+# Scale the variables
+usar.scale <- scale(usar)
+
+# Hierarchical clustering - complete linkage
+usar.scale.hc.comp <- hclust(dist(usar.scale), method = "complete")
+
+# Plot dendrogram
+plot(usar.scale.hc.comp, 
+     main = "Hierarchical Clustering - Complete Linkages 
+     with Scaled Featues",
+     xlab = "", sub = "", cex = 0.9)
+```
+    
+    \ 
+    
+(d) What effect does scaling the variables have on the hierarchical clustering obtained? In your opinion, should the variables be scaled before the inter-observation dissimilarities are computed? Provide a justification for your answer.
+    
+    \ 
+    
+    __Comments__: Using the same hierarchical clustering method, scaling the variables before the inter-observation dissimilarities are computed effectively gives each variable equal importance. The `ISLR` text uses the example of an "eclectic online retailer" that only "sells two items: socks and computers" (ISLR, pp 398-399).
+    
+    The choice to scale or not scale depends on the task at hand. One benefit to scaling is if the variables are reported in different units (e.g. height in inches vs. height in feet), then scaling will prevent the relatively larger values from height in inches from dominating the dissimilarity measure obtained.
+    
+    For the `USArrests` data, three variables are reported on a per-capita basis: `Murder`, `Assault`, and `Rape`. The fourth variable, `UrbanPop` is reported on a percentage basis, rather than in absolute numbers (e.g. 100,000 vs. 400,000). Since the variables are reporting in different units, scaling is recommended.
+    
+    \ 
+    
+### Exercise 10 (p. 431 of PDF)
+
+In this problem, you will generate simulated data, and then perform PCA and _K_-means clustering on the data.
+
+(a) Generate a simulated data set with 20 observations in each of three classes (i.e. 60 observations total), and 50 variables. _Hint: There are a number of functions in `R` that you can use to generate data. One example is the `rnorm()` function; `runif()` is another option. Be sure to add a mean shift to the observations in each class so that there are three distinct classes._
+    
+    \ 
+    
+```{r Sec10Ex10a1, indent = "    "}
+# Generate simulated data
+set.seed(123)
+ex10 <- matrix(rnorm(60*50), ncol = 50)
+
+# Add mean shift 
+ex10[1:20, 1:ncol(ex10)] <- ex10[1:20, 1:ncol(ex10)]+3
+ex10[21:40, 1:ncol(ex10)] <- ex10[21:40, 1:ncol(ex10)]-4
+ex10[41:60, 1:ncol(ex10)] <- ex10[41:60, 1:ncol(ex10)]+1
+```
+    
+    \ 
+    
+(b) Perform PCA on the 60 observations and plot the first two principal component score vectors. Use a different color to indicate the observations in each of the three classes. If the three classes appear separated in this plot, then continue on to part (c). If not, then return to part (a) and modify the simulation so that there is greater separation between the three classes. Do not continue to part (c) until the three classes show at least some separation in the first two principal component score vectors.
+    
+    \ 
+    
+```{r Sec10Ex10b1, indent = "    "}
+# PCA
+ex10.pca <- prcomp(ex10, scale = T)
+
+# Plot
+biplot(ex10.pca, scale = 0)
+```
+    
+    \ 
+    
+    __Comments__: In the plot above, the left and bottom axes display the normalized principal component scores; the top and right axes display the loadings (source: http://stats.stackexchange.com/questions/2038/interpretation-of-biplots-in-principal-components-analysis-in-r).
+    
+    \ 
+    
+(c) Perform _K_-means clustering of the observations with _K_ = 3. How well do the clusters that you obtained in _K_-means clustering compare to the true class labels? _Hint: You can use the `table()` function in `R` to compare the true class labels to the class labels obtained by clustering. Be careful how you interpret the results: K-means clustering will arbitrarily number the clusters, so you cannot simply check whether the true class labels and clustering labels are the same._
+    
+    \ 
+    
+```{r Sec10Ex10c1, indent = "    "}
+# K-means clustering @ k = 3
+set.seed(123)
+ex10.km3 <- kmeans(ex10, 3, nstart = 50)
+ex10.km3
+
+# View number of clusters and counts
+levels(as.factor(ex10.km3$cluster))
+summary(as.factor(ex10.km3$cluster))
+
+# Table results
+table(ex10.km3$cluster, c(rep(1, 20), rep(2, 20), rep(3, 20)))
+```
+    
+    \ 
+    
+    __Comments__: Based on the produced table, it appears that the clusters obtained from _K_-means clustering are wholly correct when compared to the true class labels.
+    
+    \ 
+    
+(d) Perform _K_-means clustering with _K_ = 2. Describe your results.
+    
+    \ 
+    
+```{r Sec10Ex10d1, indent = "    "}
+# K-means clustering @ k = 2
+set.seed(123)
+ex10.km2 <- kmeans(ex10, 2, nstart = 50)
+ex10.km2
+
+# View number of clusters and counts
+levels(as.factor(ex10.km2$cluster))
+summary(as.factor(ex10.km2$cluster))
+
+# Table results
+table(ex10.km2$cluster, c(rep(1, 20), rep(2, 20), rep(3, 20)))
+```
+    
+    \ 
+    
+    __Comments__: Based on the produced table, it appears that the clusters obtained from _K_-means clustering wholly misclassified the third cluster as the first cluster. 
+    
+    In reviewing the formula to generate these data, that makes sense as the first cluster was the generated `rnorm()` values plus a mean shift of `3`, while the third cluster was the generated `rnorm()` values plus a mean shift of `1`. The second cluster was the generated `rnorm()` values less a mean shift of `4`. Although these values are randomly generated, they were generated with mean 0 and standard deviation 1, so the results are not unreasonable given the chosen mean shift values.
+    
+    \ 
+    
+(e) Now perform _K_-means clustering with _K_ = 4, and describe your results.
+    
+    \ 
+    
+```{r Sec10Ex10e1, indent = "    "}
+# K-means clustering @ k = 4
+set.seed(123)
+ex10.km4 <- kmeans(ex10, 4, nstart = 50)
+ex10.km4
+
+# View number of clusters and counts
+levels(as.factor(ex10.km4$cluster))
+summary(as.factor(ex10.km4$cluster))
+
+# Table results
+table(ex10.km4$cluster, c(rep(1, 20), rep(2, 20), rep(3, 20)))
+```
+    
+    \ 
+    
+    __Comments__: Based on the produced table, it appears that the clusters obtained from _K_-means clustering correctly classified the first and second clusters, but misclassified the third cluster into two distinct clusters (they appear in the first and fourth clusters in the model). 
+    
+    \ 
+    
+(f) Now perform _K_-means clustering with _K_ = 3 on the first two principal component score vectors, rather than on the raw data. That is, perform _K_-means clustering on the 60 × 2 matrix of which the first column is the first principal component score vector, and the second column is the second principal component score vector. Comment on the results.
+    
+    \ 
+    
+```{r Sec10Ex10f1, indent = "    "}
+# K-means clustering @ PCA score vectors
+set.seed(123)
+ex10.km3.pca <- kmeans(ex10.pca$x[, 1:2], 3, nstart = 50)
+ex10.km3.pca
+
+# View number of clusters and counts
+levels(as.factor(ex10.km3.pca$cluster))
+summary(as.factor(ex10.km3.pca$cluster))
+
+# Table results
+table(ex10.km3.pca$cluster, c(rep(1, 20), rep(2, 20), rep(3, 20)))
+```
+    
+    \ 
+    
+    __Comments__: The results are identical to those in `(c)`. The difference here is the value of _within cluster sum of squares by cluster_. The higher value of `between_SS` here results in `99.1%` vs. `90.3%` in `(c)`; put another way, it represents a larger percentage of `total_SS`. This suggests the data cluster better under the approach in `(f)` than `(c)`.
+    
+    \ 
+    
+(g) Using the `scale()` function, perform _K_-means clustering with _K_ = 3 on the data _after scaling each variable to have standard deviation one_. How do these results compare to those obtained in (b)? Explain.
+    
+    \ 
+    
+```{r Sec10Ex10g1, indent = "    "}
+# Scale the data
+ex10.scale <- scale(ex10)
+
+# K-means clustering @ k = 3
+set.seed(123)
+ex10.scale.km3 <- kmeans(ex10.scale, 3, nstart = 50)
+ex10.scale.km3
+
+# View number of clusters and counts
+levels(as.factor(ex10.scale.km3$cluster))
+summary(as.factor(ex10.scale.km3$cluster))
+
+# Table results
+table(ex10.scale.km3$cluster, c(rep(1, 20), rep(2, 20), rep(3, 20)))
+```
+    
+    \ 
+    
+    __Comments__: The results in `(b)` appear to be similar to those in `(g)` insofar as the two principal components have three distinct groupings, as do the results in the scaled _K_-means clustering above. The results are reasonable as while PCA is sensitive to the scale of the data, the data were generated using mean 0 and standard deviation 1, and the mean shift applied was done so at the same levels across each of the three clusters. 
+    
+    \ 
+    
+```{r FIN}
+# FIN
+
+# Session info
+sessionInfo()
+```

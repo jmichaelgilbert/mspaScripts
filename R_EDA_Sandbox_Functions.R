@@ -24,7 +24,8 @@
 #--------------------------------------
 # Function to add MSE to other measures from forecast::accuracy
 fit <- function(f, x){
-    temp <- data.frame(forecast::accuracy(f, x), 
+    require(forecast)
+	temp <- data.frame(forecast::accuracy(f, x), 
                        forecast::accuracy(f, x)[, 2]^2)
     temp <- temp[, -c(1)]
     colnames(temp)[6] <- "MSE"
