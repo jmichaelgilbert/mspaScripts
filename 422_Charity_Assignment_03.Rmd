@@ -1,0 +1,2027 @@
+---
+title: "422_Charity_Assignment_03"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+Workspace cleanup and prep:
+
+```{r setup.R, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(boot)
+library(caret)
+library(class)
+library(glmnet)
+library(knitr)
+library(leaps)
+library(MASS)
+library(pROC)
+library(randomForest)
+library(tree)
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+```{r Functions, message = F, results = "hide"}
+#==============================================================================
+# Functions
+#==============================================================================
+
+#--------------------------------------
+# GitHub
+#--------------------------------------
+# Create function to source functions from GitHub
+source.GitHub <- function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", "cacert.pem",
+                                                      package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url <- "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+
+#--------------------------------------
+# Classification Performance
+#--------------------------------------
+class.perf <- function(target, probs, thresh){
+    
+    # Classify based on predicted probabilities and optimal threshold.
+    predClass <- rep("0", length(probs))
+    predClass[probs > thresh] <- "1"
+    predClass <- factor(predClass)
+    
+    # Generate confusion matrix for training data
+    confMat <- table(target, predClass, dnn = c("Actual", "Predicted"))
+    
+    # Calculate TP and FP rates.
+    # Note:these calculations will need to be modified if you transpose
+    #   the confusion matrix from the version above.
+    TPrate <- confMat["1", "1"] / sum(confMat["1", ])
+    FPrate <- confMat["0", "1"] / sum(confMat["0", ])
+    
+    # Store results in list to pass out of function.
+    results <- list(predClass = predClass, confMat = confMat, 
+                    TPrate = TPrate, FPrate = FPrate)
+}
+
+```
+
+## Charity Problem - Part 3
+
+### Exercises
+
+1. Data Preparation
+    
+    For this assignment, use all of the data in __charityTRN.csv__ (both DONR = 0 and DONR = 1 observations).
+    
+    \ 
+    
+    __Note__: Some data prep operations changed from _Charity Assignment 01_. To conserve space, the option `eval = F` was specified in each chunk, so only the revised code used for data prep is included below. 
+    
+    \ 
+    
+```{r Ex1base1, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Data Prep
+#------------------------------------------------------------------------------
+
+# Load data - treat blanks, single-space, and NA characters as NAs
+ctrn <- read.csv("~/charityTRN.csv", header = T, na.strings = c("", " ", "NA"))
+
+# Check for duplicates of ID
+anyDuplicated(ctrn$ID)
+
+# Assign ID as index
+rownames(ctrn) <- ctrn$ID
+
+# Drop ID
+ctrn <- subset(ctrn, select = -ID)
+```
+    
+```{r Ex1base2, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Variable Conversions
+#------------------------------------------------------------------------------
+
+# DONR = binary indicator for response to mailing
+ctrn$DONR <- as.factor(ctrn$DONR)
+
+# HOME = binary indicator variable for owning a home
+ctrn$HOME <- as.factor(ctrn$HOME)
+
+# HINC = household income
+ctrn$HINC <- as.factor(ctrn$HINC)
+
+# GENDER = only four valid levels, but has six
+ctrn$GENDER[!is.na(ctrn$GENDER) & ctrn$GENDER == "A"] <- NA
+ctrn$GENDER[!is.na(ctrn$GENDER) & ctrn$GENDER == "C"] <- NA
+
+# Remove levels with zero observations ("A", "C")
+ctrn$GENDER <- factor(ctrn$GENDER)
+
+# RFA_96 = concatenated 'intelligent' string
+ctrn$RFA_96_R <- as.factor(substr(ctrn$RFA_96, 1, 1))
+ctrn$RFA_96_F <- as.factor(substr(ctrn$RFA_96, 2, 2))
+ctrn$RFA_96_A <- as.factor(substr(ctrn$RFA_96, 3, 3))
+
+# RFA_97 = concatenated 'intelligent' string
+ctrn$RFA_97_R <- as.factor(substr(ctrn$RFA_97, 1, 1))
+ctrn$RFA_97_F <- as.factor(substr(ctrn$RFA_97, 2, 2))
+ctrn$RFA_97_A <- as.factor(substr(ctrn$RFA_97, 3, 3))
+
+# Be sure to validate the splits as correct! Can use table:
+# table(ctrn$RFA_96, ctrn$RFA_96_R)
+
+# Drop RFA_96, RFA_97, and RFA_97_R (factor variable with only one level)
+ctrn <- subset(ctrn, select = -c(RFA_96, RFA_97, RFA_97_R))
+```
+    
+```{r Ex1base3, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Missing Flags
+#------------------------------------------------------------------------------
+
+# Assign full column names
+ctrn.cn.all <- colnames(ctrn)
+
+# Create missing flags
+ctrn <- miss.flag(ctrn, ctrn.cn.all)
+
+# Sum of 'NA' values in data.frame(ctrn) by variable
+colSums(is.na(ctrn))[colSums(is.na(ctrn)) > 0]
+
+# Compare to sum of flag variables
+colSums(ctrn[, grep("^MF_", names(ctrn))])
+```
+    
+```{r Ex1base4, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Imputations
+#------------------------------------------------------------------------------
+
+# Create clone verison of data.frame
+ctrn.og <- ctrn
+
+# Conduct MI
+ptm <- proc.time()
+registerDoParallel(cores = 3)
+ctrn.mi <- missForest(ctrn, ntree = 400, verbose = T, parallelize = "forests")
+proc.time() - ptm; rm(ptm)
+
+# View out-of-bag error (OOB) from MI
+ctrn.mi.oob <- ctrn.mi$OOBerror; ctrn.mi.oob
+
+# Assign results back to data.frame
+ctrn <- ctrn.mi$ximp
+
+# Validate no NA values
+sum(is.na(ctrn))
+```
+    
+```{r Ex1base5, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Variable Derivations, Trims, Transforms, and Levels
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Derivations
+#--------------------------------------
+
+# Create lifetime promotion-to-gifts ratio
+# Average of number of promotions sent for each gift
+# Rounding off to whole number; cannot get 5.5 promotions
+ctrn$PROMGIFT <- round(ctrn$NUMPROM / ctrn$NGIFTALL, digits = 0)
+
+# Create lifetime gift-to-promotion rate
+# Conversion rate, or effectiveness rate
+ctrn$GIFTPROM <- ctrn$NGIFTALL / ctrn$NUMPROM
+
+# Create mean donation amount
+ctrn$MEANAMT <- ctrn$RAMNTALL / ctrn$NGIFTALL
+
+#--------------------------------------
+# Trims
+#--------------------------------------
+
+# Assign numeric column names, exclude missing flag variables
+ctrn.cn.num <- grep("^MF_", colnames(ctrn[, !sapply(ctrn, is.factor)]),
+                    value = T, invert = T)
+
+# Create trims of numeric variables
+ctrn <- num.trims(ctrn, ctrn.cn.num)
+
+#--------------------------------------
+# Transforms
+#--------------------------------------
+
+# Assign numeric column names, exclude missing flag variables
+ctrn.cn.num <- grep("^MF_", colnames(ctrn[, !sapply(ctrn, is.factor)]),
+                    value = T, invert = T)
+
+# Create transforms of numeric variables
+ctrn <- num.trans(ctrn, ctrn.cn.num)
+
+#--------------------------------------
+# Levels
+#--------------------------------------
+
+# Assign factor column names, excluding missing flag variables
+ctrn.cn.fac <- grep("^MF_", colnames(ctrn[, sapply(ctrn, is.factor)]),
+                    value = T, invert = T)
+
+# Create levels of factor variables
+ctrn <- fac.flag(ctrn, ctrn.cn.fac)
+```
+    
+```{r Ex1base6, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Split & Save
+#------------------------------------------------------------------------------
+
+# Split data 75/25 for Regression & Classification problems
+set.seed(123)
+ctrn$index.test <- as.logical(rbinom(nrow(ctrn), 1, 0.25))
+round(mean(ctrn$index.test), digits = 4)
+
+# Split the 75 into validation (1/3) and training (2/3)
+set.seed(321)
+ctrn$index.val <- F
+ctrn$index.val[!ctrn$index.test] <- as.logical(rbinom(sum(!ctrn$index.test),
+                                                      1, (1/3)))
+round(mean(ctrn$index.val[!ctrn$index.test]), digits = 4)
+
+# Split remaining values into training
+ctrn$index.train <- !ctrn.class$index.test & !ctrn.class$index.val
+round(mean(ctrn$index.train), digits = 4)
+
+# Split ctrn into separate data.frame
+ctrn$index.donor <- ctrn$DONR == "1"
+ctrn.reg <- ctrn[ctrn$index.donor, ]
+ctrn.class <- ctrn; rm(ctrn)
+
+# Save data
+save(ctrn.reg, ctrn.class, ctrn.og, 
+     file = file.path(getwd(), "charityData.RData"))
+```
+    
+```{r Ex1base7, indent = "    ", include = F}
+# Load data
+load(file = file.path("C:/Users/Michael/Dropbox/R", 
+                      "charityData.RData"))
+```
+    
+    Briefly describe any data preparation steps that you have taken. Short sentences and bullet points are fine. From reading your response, I should understand what changes have been made to the data from its raw form (in the CSV file) to the form that you use to train your models. Items to address include:
+    
+    (a) How did you address missing values?
+    
+    \ 
+    
+    Missing values were addressed by using the `R` package `missForest` with the function by the same name. The function works on both numeric and factor (categorical) variables. The parameter for `ntree` was set to 400. The resulting out-of-bag error was `14.73%`.
+    
+    The variable `GENDER` appeared to contain two incorrect classes: `A` and `C`. These classes were set to `NA` _rather than_ to `U` (unknown). Setting them to `NA` allowed them to be imputed by `missForest`.
+    
+    \ 
+    
+    (b) Are there any derived or transformed variables that you added to the dataset?
+    
+    \ 
+    
+    Yes, there are three derived variables:
+    
+    * `PROMGIFT` is `NUMPROM` divided by `NGIFTALL`, rounded to the nearest integer. This was to look at the number of promotions-to-gifts ratio. The rounding occurred since a donor cannot (for example) receive `3.14` promotions.
+    * `GIFTPROM` is `NGIFTALL` divided by `NUMPROM` and is closer to a "response rate" of the number of lifetime gifts-to-promotions. 
+    * `MEANAMT` is `RAMNTALL` divided by `NGIFTALL` to come up with a mean amount donated per donation (note: another student mentioned this variable on the discussion board, so I take zero credit for coming up with this).
+    
+    The downside to `PROMGIFT` and `GIFTPROM` is that they both implicitly assume a donor must first receive a promotion to give a gift. In reality, a donor might give an initial gift, then never donate again (even after receiving multiple promotions).
+    
+    \ 
+    
+    (c) Are there any variables you have chosen to remove from the dataset?
+    
+    \ 
+    
+    Yes, the variables `RFA_96` and `RFA_97` were removed from the dataset. Both of these variables are concatenated "intelligent" strings. They were split into component parts and their components included in the dataset. After imputation, the variables could be reconstructed by concatenating them again. However, the value here was unclear.
+    
+    \ 
+    
+2. Strategy for Model Validation
+    
+    For this assignment, you will employ a hold-out validation dataset and a hold-out test dataset for model validation and selection.
+    
+    \ 
+    
+```{r Ex2base1, indent = "    "}
+# View column names that correspond to index
+grep("^index", colnames(ctrn.class), value = T)
+```
+    
+    \ 
+    
+    (a) _Hold-Out Test Set_: The first step you should take is to sample 25% of the observations from Exercise 1 to form a hold-out test set. This data will be referred to as the __Classification Test Set__ (or simply the Test Set for the remainder of this document). Report the number of observations and the distribution of response values in the Test Set. The data in the Test Set should not be used until Exercise 4e of this assignment.
+    
+    \ 
+    
+```{r Ex2a1, indent = "    "}
+# Summary statistics
+summary(ctrn.class$index.test)
+
+# Compare split to target
+round(mean(ctrn.class$index.test), digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: For the __Classification Test Set__, there are `17,794` observations where `index.test == TRUE` and `53,906` observations where `index.test == FALSE`. These sum to `71,700` observations, which matches the number of rows in the dataset. The mean value of `index.test` is `0.2482`, which is a close approximation to the target value of `0.2500`.
+    
+    \ 
+    
+    (b) _Hold-Out Validation Set_: The next step you should take is to sample another 25% of the observations to form a hold-out validation set. The hold-out validation set will be a different 25% of the data from the Test Set; put another way, the hold-out validation set will be one-third of the remaining 75% of data after the Test Set has been identified. The hold-out validation set will be referred to as the __Classification Validation Subset__ (or simply the
+Validation Subset for the remainder of this document). Report the number of observations and the distribution of response values in the Validation Subset.
+    
+    \ 
+    
+```{r Ex2b1, indent = "    "}
+#--------------------------------------
+# Validation Subset - Total
+#--------------------------------------
+# Summary statistics
+summary(ctrn.class$index.val)
+
+# Compare split to target
+round(mean(ctrn.class$index.val), digits = 4)
+
+#--------------------------------------
+# Validation Subset - Excluding Test
+#--------------------------------------
+# Summary statistics
+summary(ctrn.class$index.val[!ctrn.class$index.test])
+
+# Compare split to target
+round(mean(ctrn.class$index.val[!ctrn.class$index.test]), digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: For the _Total_ __Classification Validation Subset__, there are `17,893` observations where `index.val == TRUE` and `53,807` observations where `index.val == FALSE`. These sum to `71,700` observations, which matches the number of rows in the dataset. The mean value of `index.val` is `0.2496`, which is a close approximation to the target value of `0.2500`.
+    
+    For the __Classification Validation Subset__ _Excluding Test_, there are `17,893` observations where `index.val == TRUE` and `36,013` observations where `index.val == FALSE`. The mean value of `index.val` is `0.3319`, which is a close approximation to the target value of `0.3333`.
+    
+    \ 
+    
+    (c) _Training Subset_: The remaining 50% of the observations will be referred to as the __Classification Training Subset__ (or simply the Training Subset for the remainder of this document). Report the number of observations and the distribution of response values in the Training Subset.
+    
+    \ 
+    
+```{r Ex2c1, indent = "    "}
+# Summary statistics
+summary(ctrn.class$index.train)
+
+# Compare split to target
+round(mean(ctrn.class$index.train), digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: For the __Classification Training Subset__, there are `36,013` observations where `index.train == TRUE` and `35,687` observations where `index.train == FALSE`. These sum to `71,700` observations, which matches the number of rows in the dataset. The mean value of `index.train` is `0.5023`, which is a close approximation to the target value of `0.3333`.
+    
+    \ 
+    
+3. Model Fitting
+    
+    Use R to develop various models for the response variable `DONR`. The variables `ID` and `DAMT` are not to be used as predictors. Fit at least one model from each of the following four categories. Each model should be fit to
+the __Training Subset__, and the __Validation Subset__ should be used to evaluate decisions such as model size, hyperparameter values, tree depth, and so on.
+    
+    \ 
+    
+    __Comments__: To conduct subset selection for `(a)` and `(b)` below, the `R` package `caret` was used. The code follows. 
+    
+    In short, a logistic regression model was built on a subset of the `data.frame()`, only using `35` variables instead of the `396` contained in the 'primary' dataset. This was done using _k_-Fold cross-validation, with 10-folds, repeated 10-times, and using a hold-out of approximately `10%` during each iteration. 
+    
+    After the model was constructed, `caret` offers a function to view variables by importance. The variables with the highest importance were chosen to be used in the model. For _multiple logistic regression_, the largest model (the full model) used `7` variables, with variable importance scores no lower than `38`. The smallest model (the nested model) used `4` of the `7` variables in the full model.
+    
+    \ 
+    
+```{r Ex3base1, indent = "    "}
+#------------------------------------------------------------------------------
+# Staging & Prep
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Column Names - Excluding Response & Index Variables
+#--------------------------------------
+# Subset variables in model
+ctrn.class.all <- ctrn.class
+ctrn.class <- ctrn.class[c(1:31, 393:396)]
+
+# All
+class.cn <- grep("^DONR|^DAMT|^index.", colnames(ctrn.class), 
+                 value = T, invert = T)
+
+# Numeric
+class.cn.num <- grep("^DONR|^DAMT|^index.", 
+                     colnames(ctrn.class[, !sapply(ctrn.class, is.factor)]),
+                     value = T, invert = T)
+
+# Factor
+class.cn.fac <- grep("^DONR|^DAMT|^index.", 
+                     colnames(ctrn.class[, sapply(ctrn.class, is.factor)]), 
+                     value = T, invert = T)
+
+#--------------------------------------
+# Initial Model Formula
+#--------------------------------------
+# Specify model formula to exclude these
+class.form <- paste("DONR ~ ", paste(class.cn, collapse = " + "), sep = "")
+```
+    
+```{r Ex3base2, indent = "    "}
+#==============================================================================
+# {caret} for Subset Selection
+#==============================================================================
+
+# Specify training parameters
+caret.fc <- trainControl(method = "repeatedcv", number = 10, repeats = 10,
+                         p = 0.9)
+
+#------------------------------------------------------------------------------
+# GLM | Metric = Accuracy
+#------------------------------------------------------------------------------
+# Build model
+caret.log <- train(as.formula(class.form), 
+                   data = ctrn.class[ctrn.class$index.train, ],
+                   method = "glm", metric = "Accuracy", trControl = caret.fc)
+caret.log$results
+summary(caret.log)
+
+# Store variable importance
+caret.log.varimp <- varImp(caret.log)$importance
+caret.log.varimp$var <- rownames(caret.log.varimp)
+rownames(caret.log.varimp) <- seq(1, nrow(caret.log.varimp))
+caret.log.varimp <- caret.log.varimp[order(-caret.log.varimp[, 1]), ]
+
+# View variable importance
+caret.log.varimp
+```
+    
+    \ 
+    
+    (a) Simple logistic regression (ISLR Section 4.3) [Recall that simple logistic regression is logistic regression with a single predictor variable.]
+    
+    \ 
+    
+```{r Ex3a1, indent = "    "}
+#==============================================================================
+# Simple Logistic Regression
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Model 1
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+# Build model
+class.slr.m1.train <- glm(DONR ~ TDON, 
+                          data = ctrn.class[ctrn.class$index.train, ], 
+                          family = binomial(link = logit))
+
+# Summary statistics
+summary(class.slr.m1.train)
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+class.slr.m1.train.pred <- predict(class.slr.m1.train, type = "response")
+hist(class.slr.m1.train.pred, col = "grey",
+     main = "Predicted probabilities: SLR Model 1",
+     sub = "Training Data",
+     breaks = 50)
+mean(class.slr.m1.train.pred)
+
+#--------------------------------------
+# Predict on validation data
+#--------------------------------------
+class.slr.m1.val.pred <- predict(class.slr.m1.train, 
+                                 newdata = ctrn.class[ctrn.class$index.val, ], 
+                                 type = "response")
+hist(class.slr.m1.val.pred, col = "grey",
+     main = "Predicted probabilities: SLR Model 1",
+     sub = "Validation Data",
+     breaks = 50)
+mean(class.slr.m1.val.pred)
+
+#--------------------------------------
+# Values of ROC curve on validation data
+#--------------------------------------
+# Assign values for ROC curve
+class.slr.m1.roc <- roc(response = ctrn.class$DONR[ctrn.class$index.val], 
+                        predictor = class.slr.m1.val.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+class.slr.m1.op.dist <- sqrt((class.slr.m1.roc$specificities - 1)^2 + 
+                             (class.slr.m1.roc$sensitivities - 1)^2)
+class.slr.m1.op.index <- which.min(class.slr.m1.op.dist)
+class.slr.m1.op.thresh <- class.slr.m1.roc$thresholds[class.slr.m1.op.index]
+round(class.slr.m1.op.thresh, digits = 4)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(class.slr.m1.roc, col = "blue", main = "ROC Curve for class.slr.m1.roc")
+
+# Add mark for optimal threshold
+points(class.slr.m1.roc$specificities[class.slr.m1.op.index],
+       class.slr.m1.roc$sensitivities[class.slr.m1.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Performance on training data
+#--------------------------------------
+class.slr.m1.train.perf <- class.perf(ctrn.class$DONR[ctrn.class$index.train],
+                                      class.slr.m1.train.pred, 
+                                      class.slr.m1.op.thresh)
+
+# Confusion Matrix
+class.slr.m1.train.perf$confMat
+
+# True Positive
+round(class.slr.m1.train.perf$TPrate, digits = 4)
+
+# False Positive
+round(class.slr.m1.train.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.slr.m1.train.perf$confMat))), digits = 4)
+
+#--------------------------------------
+# Performance on validation data
+#--------------------------------------
+class.slr.m1.val.perf <- class.perf(ctrn.class$DONR[ctrn.class$index.val], 
+                                    class.slr.m1.val.pred, 
+                                    class.slr.m1.op.thresh)
+
+# Confusion Matrix
+class.slr.m1.val.perf$confMat
+
+# True Positive
+round(class.slr.m1.val.perf$TPrate, digits = 4)
+
+# False Positive
+round(class.slr.m1.val.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.slr.m1.val.perf$confMat))), digits = 4)
+
+```
+    
+    \ 
+    
+    __Comments__: The variable selected for simple logistic regression was `TDON`, which had the highest score for importance resulting from the `{caret}` model. The value of $\lambda$ selected as the optimal threshold was the point closest to the upper-left corner of the ROC curve. This method gives equal weight to both true positives and false positives. 
+    
+    \ 
+    
+    (b) Multiple logistic regression with subset selection (ISLR Section 4.3)
+    
+    \ 
+    
+```{r Ex3b1, indent = "    "}
+#==============================================================================
+# Multiple Logistic Regression
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Model 1
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+# Build model
+class.mlr.m1.train <- glm(DONR ~ TDON + MEDHVAL + NUMPRM12 + RFA_97_A + 
+                              RFA_97_F + HINC + NUMPROM, 
+                          data = ctrn.class[ctrn.class$index.train, ], 
+                          family = binomial(link = logit))
+
+# Summary statistics
+summary(class.mlr.m1.train)
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+class.mlr.m1.train.pred <- predict(class.mlr.m1.train, type = "response")
+hist(class.mlr.m1.train.pred, col = "grey",
+     main = "Predicted probabilities: Model 1",
+     sub = "Training Data",
+     breaks = 50)
+mean(class.mlr.m1.train.pred)
+
+#--------------------------------------
+# Predict on validation data
+#--------------------------------------
+class.mlr.m1.val.pred <- predict(class.mlr.m1.train, 
+                                 newdata = ctrn.class[ctrn.class$index.val, ], 
+                                 type = "response")
+hist(class.mlr.m1.val.pred, col = "grey",
+     main = "Predicted probabilities: Model 1",
+     sub = "Validation Data",
+     breaks = 50)
+mean(class.mlr.m1.val.pred)
+
+#--------------------------------------
+# Values of ROC curve on validation data
+#--------------------------------------
+# Assign values for ROC curve
+class.mlr.m1.roc <- roc(response = ctrn.class$DONR[ctrn.class$index.val], 
+                        predictor = class.mlr.m1.val.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+class.mlr.m1.op.dist <- sqrt((class.mlr.m1.roc$specificities - 1)^2 + 
+                             (class.mlr.m1.roc$sensitivities - 1)^2)
+class.mlr.m1.op.index <- which.min(class.mlr.m1.op.dist)
+class.mlr.m1.op.thresh <- class.mlr.m1.roc$thresholds[class.mlr.m1.op.index]
+round(class.mlr.m1.op.thresh, digits = 4)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(class.mlr.m1.roc, col = "blue", main = "ROC Curve for class.mlr.m1.roc")
+
+# Add mark for optimal threshold
+points(class.mlr.m1.roc$specificities[class.mlr.m1.op.index],
+       class.mlr.m1.roc$sensitivities[class.mlr.m1.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Performance on training data
+#--------------------------------------
+class.mlr.m1.train.perf <- class.perf(ctrn.class$DONR[ctrn.class$index.train],
+                                      class.mlr.m1.train.pred, 
+                                      class.mlr.m1.op.thresh)
+
+# Confusion Matrix
+class.mlr.m1.train.perf$confMat
+
+# True Positive Rate
+round(class.mlr.m1.train.perf$TPrate, digits = 4)
+
+# False Positive Rate
+round(class.mlr.m1.train.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m1.train.perf$confMat))), digits = 4)
+
+#--------------------------------------
+# Performance on validation data
+#--------------------------------------
+class.mlr.m1.val.perf <- class.perf(ctrn.class$DONR[ctrn.class$index.val], 
+                                    class.mlr.m1.val.pred, 
+                                    class.mlr.m1.op.thresh)
+
+# Confusion Matrix
+class.mlr.m1.val.perf$confMat
+
+# True Positive Rate
+round(class.mlr.m1.val.perf$TPrate, digits = 4)
+
+# False Positive Rate
+round(class.mlr.m1.val.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m1.val.perf$confMat))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 2
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+# Build model
+class.mlr.m2.train <- glm(DONR ~ TDON + MEDHVAL + NUMPRM12 + RFA_97_A + 
+                              RFA_97_F + HINC, 
+                          data = ctrn.class[ctrn.class$index.train, ], 
+                          family = binomial(link = logit))
+
+# Summary statistics
+summary(class.mlr.m2.train)
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+class.mlr.m2.train.pred <- predict(class.mlr.m2.train, type = "response")
+hist(class.mlr.m2.train.pred, col = "grey",
+     main = "Predicted probabilities: Model 2",
+     sub = "Training Data",
+     breaks = 50)
+mean(class.mlr.m2.train.pred)
+
+#--------------------------------------
+# Predict on validation data
+#--------------------------------------
+class.mlr.m2.val.pred <- predict(class.mlr.m2.train, 
+                                 newdata = ctrn.class[ctrn.class$index.val, ], 
+                                 type = "response")
+hist(class.mlr.m2.val.pred, col = "grey",
+     main = "Predicted probabilities: Model 2",
+     sub = "Validation Data",
+     breaks = 50)
+mean(class.mlr.m2.val.pred)
+
+#--------------------------------------
+# Values of ROC curve on validation data
+#--------------------------------------
+# Assign values for ROC curve
+class.mlr.m2.roc <- roc(response = ctrn.class$DONR[ctrn.class$index.val], 
+                        predictor = class.mlr.m2.val.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+class.mlr.m2.op.dist <- sqrt((class.mlr.m2.roc$specificities - 1)^2 + 
+                             (class.mlr.m2.roc$sensitivities - 1)^2)
+class.mlr.m2.op.index <- which.min(class.mlr.m2.op.dist)
+class.mlr.m2.op.thresh <- class.mlr.m2.roc$thresholds[class.mlr.m2.op.index]
+round(class.mlr.m2.op.thresh, digits = 4)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(class.mlr.m2.roc, col = "blue", main = "ROC Curve for class.mlr.m2.roc")
+
+# Add mark for optimal threshold
+points(class.mlr.m2.roc$specificities[class.mlr.m2.op.index],
+       class.mlr.m2.roc$sensitivities[class.mlr.m2.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Performance on training data
+#--------------------------------------
+class.mlr.m2.train.perf <- class.perf(ctrn.class$DONR[ctrn.class$index.train],
+                                      class.mlr.m2.train.pred, 
+                                      class.mlr.m2.op.thresh)
+
+# Confusion Matrix
+class.mlr.m2.train.perf$confMat
+
+# True Positive Rate
+round(class.mlr.m2.train.perf$TPrate, digits = 4)
+
+# False Positive Rate
+round(class.mlr.m2.train.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m2.train.perf$confMat))), digits = 4)
+
+#--------------------------------------
+# Performance on validation data
+#--------------------------------------
+class.mlr.m2.val.perf <- class.perf(ctrn.class$DONR[ctrn.class$index.val], 
+                                    class.mlr.m2.val.pred, 
+                                    class.mlr.m2.op.thresh)
+
+# Confusion Matrix
+class.mlr.m2.val.perf$confMat
+
+# True Positive Rate
+round(class.mlr.m2.val.perf$TPrate, digits = 4)
+
+# False Positive Rate
+round(class.mlr.m2.val.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m2.val.perf$confMat))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 3
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+# Build model
+class.mlr.m3.train <- glm(DONR ~ TDON + MEDHVAL + NUMPRM12 + RFA_97_A + 
+                              RFA_97_F, 
+                          data = ctrn.class[ctrn.class$index.train, ], 
+                          family = binomial(link = logit))
+
+# Summary statistics
+summary(class.mlr.m3.train)
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+class.mlr.m3.train.pred <- predict(class.mlr.m3.train, type = "response")
+hist(class.mlr.m3.train.pred, col = "grey",
+     main = "Predicted probabilities: mlr Model 1",
+     sub = "Training Data",
+     breaks = 50)
+mean(class.mlr.m3.train.pred)
+
+#--------------------------------------
+# Predict on validation data
+#--------------------------------------
+class.mlr.m3.val.pred <- predict(class.mlr.m3.train, 
+                                 newdata = ctrn.class[ctrn.class$index.val, ], 
+                                 type = "response")
+hist(class.mlr.m3.val.pred, col = "grey",
+     main = "Predicted probabilities: mlr Model 1",
+     sub = "Validation Data",
+     breaks = 50)
+mean(class.mlr.m3.val.pred)
+
+#--------------------------------------
+# Values of ROC curve on validation data
+#--------------------------------------
+# Assign values for ROC curve
+class.mlr.m3.roc <- roc(response = ctrn.class$DONR[ctrn.class$index.val], 
+                        predictor = class.mlr.m3.val.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+class.mlr.m3.op.dist <- sqrt((class.mlr.m3.roc$specificities - 1)^2 + 
+                             (class.mlr.m3.roc$sensitivities - 1)^2)
+class.mlr.m3.op.index <- which.min(class.mlr.m3.op.dist)
+class.mlr.m3.op.thresh <- class.mlr.m3.roc$thresholds[class.mlr.m3.op.index]
+round(class.mlr.m3.op.thresh, digits = 4)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(class.mlr.m3.roc, col = "blue", main = "ROC Curve for class.mlr.m3.roc")
+
+# Add mark for optimal threshold
+points(class.mlr.m3.roc$specificities[class.mlr.m3.op.index],
+       class.mlr.m3.roc$sensitivities[class.mlr.m3.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Performance on training data
+#--------------------------------------
+class.mlr.m3.train.perf <- class.perf(ctrn.class$DONR[ctrn.class$index.train],
+                                      class.mlr.m3.train.pred, 
+                                      class.mlr.m3.op.thresh)
+
+# Confusion Matrix
+class.mlr.m3.train.perf$confMat
+
+# True Positive Rate
+round(class.mlr.m3.train.perf$TPrate, digits = 4)
+
+# False Positive Rate
+round(class.mlr.m3.train.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m3.train.perf$confMat))), digits = 4)
+
+#--------------------------------------
+# Performance on validation data
+#--------------------------------------
+class.mlr.m3.val.perf <- class.perf(ctrn.class$DONR[ctrn.class$index.val], 
+                                    class.mlr.m3.val.pred, 
+                                    class.mlr.m3.op.thresh)
+
+# Confusion Matrix
+class.mlr.m3.val.perf$confMat
+
+# True Positive Rate
+round(class.mlr.m3.val.perf$TPrate, digits = 4)
+
+# False Positive Rate
+round(class.mlr.m3.val.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m3.val.perf$confMat))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 4
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+# Build model
+class.mlr.m4.train <- glm(DONR ~ TDON + MEDHVAL + NUMPRM12 + RFA_97_A, 
+                          data = ctrn.class[ctrn.class$index.train, ], 
+                          family = binomial(link = logit))
+
+# Summary statistics
+summary(class.mlr.m4.train)
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+class.mlr.m4.train.pred <- predict(class.mlr.m4.train, type = "response")
+hist(class.mlr.m4.train.pred, col = "grey",
+     main = "Predicted probabilities: mlr Model 1",
+     sub = "Training Data",
+     breaks = 50)
+mean(class.mlr.m4.train.pred)
+
+#--------------------------------------
+# Predict on validation data
+#--------------------------------------
+class.mlr.m4.val.pred <- predict(class.mlr.m4.train, 
+                                 newdata = ctrn.class[ctrn.class$index.val, ], 
+                                 type = "response")
+hist(class.mlr.m4.val.pred, col = "grey",
+     main = "Predicted probabilities: mlr Model 1",
+     sub = "Validation Data",
+     breaks = 50)
+mean(class.mlr.m4.val.pred)
+
+#--------------------------------------
+# Values of ROC curve on validation data
+#--------------------------------------
+# Assign values for ROC curve
+class.mlr.m4.roc <- roc(response = ctrn.class$DONR[ctrn.class$index.val], 
+                        predictor = class.mlr.m4.val.pred)
+
+#--------------------------------------
+# Determine optimal threshold
+#--------------------------------------
+class.mlr.m4.op.dist <- sqrt((class.mlr.m4.roc$specificities - 1)^2 + 
+                             (class.mlr.m4.roc$sensitivities - 1)^2)
+class.mlr.m4.op.index <- which.min(class.mlr.m4.op.dist)
+class.mlr.m4.op.thresh <- class.mlr.m4.roc$thresholds[class.mlr.m4.op.index]
+round(class.mlr.m4.op.thresh, digits = 4)
+
+#--------------------------------------
+# Plot ROC curve
+#--------------------------------------
+# Set plot region to 'square'
+par(pty = "s")
+
+# Plot ROC curve
+plot(class.mlr.m4.roc, col = "blue", main = "ROC Curve for class.mlr.m4.roc")
+
+# Add mark for optimal threshold
+points(class.mlr.m4.roc$specificities[class.mlr.m4.op.index],
+       class.mlr.m4.roc$sensitivities[class.mlr.m4.op.index],
+       col = "black", pch = 7)
+
+# Set plot region to 'maximal'
+par(pty = "m")
+
+#--------------------------------------
+# Performance on training data
+#--------------------------------------
+class.mlr.m4.train.perf <- class.perf(ctrn.class$DONR[ctrn.class$index.train],
+                                      class.mlr.m4.train.pred, 
+                                      class.mlr.m4.op.thresh)
+
+# Confusion Matrix
+class.mlr.m4.train.perf$confMat
+
+# True Positive Rate
+round(class.mlr.m4.train.perf$TPrate, digits = 4)
+
+# False Positive Rate
+round(class.mlr.m4.train.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m4.train.perf$confMat))), digits = 4)
+
+#--------------------------------------
+# Performance on validation data
+#--------------------------------------
+class.mlr.m4.val.perf <- class.perf(ctrn.class$DONR[ctrn.class$index.val], 
+                                    class.mlr.m4.val.pred, 
+                                    class.mlr.m4.op.thresh)
+
+# Confusion Matrix
+class.mlr.m4.val.perf$confMat
+
+# True Positive Rate
+round(class.mlr.m4.val.perf$TPrate, digits = 4)
+
+# False Positive Rate
+round(class.mlr.m4.val.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m4.val.perf$confMat))), digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: The variables selected for the multiple logistic regression model were based on the top scores for importance resulting from the `{caret}` model. The first model, `M1`, uses `7` variables and is considered the full model. The subsequent models, `M2`, `M3`, and `M4`, each use 1-less variable than the preceding model, with `M4` using `4` variables. These are considered nested models.
+    
+    The value of $\lambda$ selected as the optimal threshold was the point closest to the upper-left corner of the ROC curve. This method gives equal weight to both true positives and false positives. 
+    
+    \ 
+    
+    (c) LDA, QDA, or KNN (ISLR Chapter 4) or Shrinkage models (ISLR Section 6.2)
+    
+    \ 
+    
+```{r Ex3c1, indent = "    "}
+#==============================================================================
+# KNN
+#==============================================================================
+
+# Standardize data
+# Note: will only work on numeric columns, so use list of names from earlier
+ctrn.class.knn <- scale(ctrn.class[class.cn.num])
+
+#------------------------------------------------------------------------------
+# Model 1 | k = 5
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Train data 
+#--------------------------------------
+set.seed(123)
+class.knn.m1.train.pred <- knn(ctrn.class.knn[ctrn.class$index.train, ],
+                               ctrn.class.knn[ctrn.class$index.train, ],
+                               ctrn.class$DONR[ctrn.class$index.train],
+                               k = 5)
+
+# Confusion Matrix
+class.knn.m1.train.cm <- table(ctrn.class$DONR[ctrn.class$index.train], 
+                               class.knn.m1.train.pred,
+                               dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.knn.m1.train.tp <- class.knn.m1.train.cm["1", "1"] / 
+                            sum(class.knn.m1.train.cm["1", ])
+round(class.knn.m1.train.tp, digits = 4)
+
+# False Positive
+class.knn.m1.train.fp <- class.knn.m1.train.cm["0", "1"] / 
+                            sum(class.knn.m1.train.cm["0", ])
+round(class.knn.m1.train.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.knn.m1.train.cm))), digits = 4)
+
+#--------------------------------------
+# Validation data 
+#--------------------------------------
+set.seed(321)
+class.knn.m1.val.pred <- knn(ctrn.class.knn[ctrn.class$index.train, ],
+                             ctrn.class.knn[ctrn.class$index.val, ],
+                             ctrn.class$DONR[ctrn.class$index.train],
+                             k = 5)
+
+# Confusion Matrix
+class.knn.m1.val.cm <- table(ctrn.class$DONR[ctrn.class$index.val], 
+                               class.knn.m1.val.pred,
+                               dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.knn.m1.val.tp <- class.knn.m1.val.cm["1", "1"] / 
+                            sum(class.knn.m1.val.cm["1", ])
+round(class.knn.m1.val.tp, digits = 4)
+
+# False Positive
+class.knn.m1.val.fp <- class.knn.m1.val.cm["0", "1"] / 
+                            sum(class.knn.m1.val.cm["0", ])
+round(class.knn.m1.val.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.knn.m1.val.cm))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 2 | k = 7
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Train data 
+#--------------------------------------
+set.seed(123)
+class.knn.m2.train.pred <- knn(ctrn.class.knn[ctrn.class$index.train, ],
+                               ctrn.class.knn[ctrn.class$index.train, ],
+                               ctrn.class$DONR[ctrn.class$index.train],
+                               k = 7)
+
+# Confusion Matrix
+class.knn.m2.train.cm <- table(ctrn.class$DONR[ctrn.class$index.train], 
+                               class.knn.m2.train.pred,
+                               dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.knn.m2.train.tp <- class.knn.m2.train.cm["1", "1"] / 
+                            sum(class.knn.m2.train.cm["1", ])
+round(class.knn.m2.train.tp, digits = 4)
+
+# False Positive
+class.knn.m2.train.fp <- class.knn.m2.train.cm["0", "1"] / 
+                            sum(class.knn.m2.train.cm["0", ])
+round(class.knn.m2.train.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.knn.m2.train.cm))), digits = 4)
+
+#--------------------------------------
+# Validation data 
+#--------------------------------------
+set.seed(321)
+class.knn.m2.val.pred <- knn(ctrn.class.knn[ctrn.class$index.train, ],
+                             ctrn.class.knn[ctrn.class$index.val, ],
+                             ctrn.class$DONR[ctrn.class$index.train],
+                             k = 7)
+
+# Confusion Matrix
+class.knn.m2.val.cm <- table(ctrn.class$DONR[ctrn.class$index.val], 
+                               class.knn.m2.val.pred,
+                               dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.knn.m2.val.tp <- class.knn.m2.val.cm["1", "1"] / 
+                            sum(class.knn.m2.val.cm["1", ])
+round(class.knn.m2.val.tp, digits = 4)
+
+# False Positive
+class.knn.m2.val.fp <- class.knn.m2.val.cm["0", "1"] / 
+                            sum(class.knn.m2.val.cm["0", ])
+round(class.knn.m2.val.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.knn.m2.val.cm))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 3 | k = 9
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Train data 
+#--------------------------------------
+set.seed(123)
+class.knn.m3.train.pred <- knn(ctrn.class.knn[ctrn.class$index.train, ],
+                               ctrn.class.knn[ctrn.class$index.train, ],
+                               ctrn.class$DONR[ctrn.class$index.train],
+                               k = 9)
+
+# Confusion Matrix
+class.knn.m3.train.cm <- table(ctrn.class$DONR[ctrn.class$index.train], 
+                               class.knn.m3.train.pred,
+                               dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.knn.m3.train.tp <- class.knn.m3.train.cm["1", "1"] / 
+                            sum(class.knn.m3.train.cm["1", ])
+round(class.knn.m3.train.tp, digits = 4)
+
+# False Positive
+class.knn.m3.train.fp <- class.knn.m3.train.cm["0", "1"] / 
+                            sum(class.knn.m3.train.cm["0", ])
+round(class.knn.m3.train.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.knn.m3.train.cm))), digits = 4)
+
+#--------------------------------------
+# Validation data 
+#--------------------------------------
+set.seed(321)
+class.knn.m3.val.pred <- knn(ctrn.class.knn[ctrn.class$index.train, ],
+                             ctrn.class.knn[ctrn.class$index.val, ],
+                             ctrn.class$DONR[ctrn.class$index.train],
+                             k = 9)
+
+# Confusion Matrix
+class.knn.m3.val.cm <- table(ctrn.class$DONR[ctrn.class$index.val], 
+                               class.knn.m3.val.pred,
+                               dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.knn.m3.val.tp <- class.knn.m3.val.cm["1", "1"] / 
+                            sum(class.knn.m3.val.cm["1", ])
+round(class.knn.m3.val.tp, digits = 4)
+
+# False Positive
+class.knn.m3.val.fp <- class.knn.m3.val.cm["0", "1"] / 
+                            sum(class.knn.m3.val.cm["0", ])
+round(class.knn.m3.val.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.knn.m3.val.cm))), digits = 4)
+
+```
+    
+    \ 
+    
+    __Comments__: Models were fit using `KNN` with values of `k` equal to `5`, `7`, and `9`. Different values for `set.seed()` were used for the `training` model versus the `validation` model. The model that had the most consistent (read: similar) accuracy was using a value of `k` equal to `7`. The accuracy here was `0.9486` in `training` and `0.9488` in `validation`.
+    
+    \ 
+    
+    (d) Nonlinear models (ISLR Chapter 7) or Tree-based models (ISLR Chapter 8)
+    
+    \ 
+    
+```{r Ex3d1, indent = "    "}
+#==============================================================================
+# Random Forest
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Model 1
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+# View frequencies for sampsize
+summary(ctrn.class$DONR)
+
+# Build model
+set.seed(123)
+class.rf.m1.train <- randomForest(as.formula(class.form),
+                                  data = ctrn.class[ctrn.class$index.train, ],
+                                  importance = T, sampsize = c(1842, 1842))
+class.rf.m1.train
+
+# View importance
+importance(class.rf.m1.train)
+varImpPlot(class.rf.m1.train)
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+class.rf.m1.train.pred <- predict(class.rf.m1.train)
+
+# Confusion Matrix
+class.rf.m1.train.cm <- table(ctrn.class$DONR[ctrn.class$index.train],
+                              class.rf.m1.train.pred,
+                              dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.rf.m1.train.tp <- class.rf.m1.train.cm["1", "1"] / 
+                            sum(class.rf.m1.train.cm["1", ])
+round(class.rf.m1.train.tp, digits = 4)
+
+# False Positive
+class.rf.m1.train.fp <- class.rf.m1.train.cm["0", "1"] / 
+                            sum(class.rf.m1.train.cm["0", ])
+round(class.rf.m1.train.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.rf.m1.train.cm))), digits = 4)
+
+# Error rate
+round(mean(ctrn.class$DONR[ctrn.class$index.train] != class.rf.m1.train.pred),
+      digits = 4)
+
+#--------------------------------------
+# Predict on validation data
+#--------------------------------------
+class.rf.m1.val.pred <- predict(class.rf.m1.train, 
+                                newdata = ctrn.class[ctrn.class$index.val, ])
+
+# Confusion Matrix
+class.rf.m1.val.cm <- table(ctrn.class$DONR[ctrn.class$index.val],
+                              class.rf.m1.val.pred,
+                              dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.rf.m1.val.tp <- class.rf.m1.val.cm["1", "1"] / 
+                            sum(class.rf.m1.val.cm["1", ])
+round(class.rf.m1.val.tp, digits = 4)
+
+# False Positive
+class.rf.m1.val.fp <- class.rf.m1.val.cm["0", "1"] / 
+                            sum(class.rf.m1.val.cm["0", ])
+round(class.rf.m1.val.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.rf.m1.val.cm))), digits = 4)
+
+# Error rate
+round(mean(ctrn.class$DONR[ctrn.class$index.val] != class.rf.m1.val.pred),
+      digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 2
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model on train data
+#--------------------------------------
+# View frequencies for sampsize
+summary(ctrn.class$DONR)
+
+# Build model
+set.seed(123)
+class.rf.m2.train <- randomForest(DONR ~ TDON + MEDHVAL + NUMPRM12 + RFA_97_A, 
+                                  data = ctrn.class[ctrn.class$index.train, ],
+                                  importance = T, sampsize = c(1842, 1842))
+class.rf.m2.train
+
+# View importance
+importance(class.rf.m2.train)
+varImpPlot(class.rf.m2.train)
+
+#--------------------------------------
+# Predict on train data
+#--------------------------------------
+class.rf.m2.train.pred <- predict(class.rf.m2.train)
+
+# Confusion Matrix
+class.rf.m2.train.cm <- table(ctrn.class$DONR[ctrn.class$index.train],
+                              class.rf.m2.train.pred,
+                              dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.rf.m2.train.tp <- class.rf.m2.train.cm["1", "1"] / 
+                            sum(class.rf.m2.train.cm["1", ])
+round(class.rf.m2.train.tp, digits = 4)
+
+# False Positive
+class.rf.m2.train.fp <- class.rf.m2.train.cm["0", "1"] / 
+                            sum(class.rf.m2.train.cm["0", ])
+round(class.rf.m2.train.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.rf.m2.train.cm))), digits = 4)
+
+# Error rate
+round(mean(ctrn.class$DONR[ctrn.class$index.train] != class.rf.m2.train.pred),
+      digits = 4)
+
+#--------------------------------------
+# Predict on validation data
+#--------------------------------------
+class.rf.m2.val.pred <- predict(class.rf.m2.train, 
+                                newdata = ctrn.class[ctrn.class$index.val, ])
+
+# Confusion Matrix
+class.rf.m2.val.cm <- table(ctrn.class$DONR[ctrn.class$index.val],
+                              class.rf.m2.val.pred,
+                              dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.rf.m2.val.tp <- class.rf.m2.val.cm["1", "1"] / 
+                            sum(class.rf.m2.val.cm["1", ])
+round(class.rf.m2.val.tp, digits = 4)
+
+# False Positive
+class.rf.m2.val.fp <- class.rf.m2.val.cm["0", "1"] / 
+                            sum(class.rf.m2.val.cm["0", ])
+round(class.rf.m2.val.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.rf.m2.val.cm))), digits = 4)
+
+# Error rate
+round(mean(ctrn.class$DONR[ctrn.class$index.val] != class.rf.m2.val.pred),
+      digits = 4)
+```
+    
+    \ 
+    
+    __Comments__: Two models were built using the `randomForest()` function from the library of the same name. The first model used all variables in the dataset (excluding variables such as `DONR`, `DAMT`, and any of the `index` variables). The second model used the smallest nested model from the multiple logistic regression in `(b)`. The first model performed far better on both the `training` data and the `validation` data.
+    
+    The `sampsize` parameter was specified in the `randomForest()` argument. The value was set to a 50/50 split of the frequency which `DONR == 1` occurs ($3684 / 2 = 1842$)
+    
+    \ 
+    
+4. Model Validation
+    
+    Use R to perform model validation on the models you fit in Exercise 3.
+    
+    (a) Any decisions made in the model building process (Exercise 3) need to be made solely with respect to a model fit on the Training Subset and predictive accuracy measured on the Validation Subset. Examples of such decisions include how many variables to be used in multiple logistic regression with subset selection, what value of $\lambda$ to be used for Lasso, or what values of hyperparameters to use for tree-based models.
+    
+    (b) Generate a table that has one row for each model you fit in Exercise 3. The table should have ten columns (at minimum, you can additional columns that you would like): Model Name; Accuracy, True-Positive Rate, and False-Positive Rate on the Training Subset; Accuracy, True-Positive Rate, and False-Positive Rate on the Validation Subset; and Accuracy, True-Positive Rate, and False-Positive Rate on the Test Set.
+    
+    (c) For the Training Subset accuracy, TP rate, and FP rate, you need to use the model, as trained in Exercise 3, to predict DONR on the data in the Training Subset. 
+    
+    (d) For the Validation Subset accuracy, TP rate, and FP rate, you need to use the model, as trained in Exercise 3, to predict `DONR` on the data in the Validation Subset. Note that you do not retrain or refit the model to the Validation Subset, nor do you re-tune the hyperparameters. The coefficients and hyperparameters should not change from Exercise 3.
+    
+    (e) Finally, for the Test Set accuracy, TP rate, and FP rate, you should refit the model to the Training Subset + Validation Subset and then predict DONR on the data in the Test Set. However, you do not re-tune the hyperparameters.
+    
+    \ 
+    
+    __Comments__: The _Training Subset_ and _Validation Subset_ accuracy, TP rate, and FP rate, were all calculated earlier in `Exercise 3`. Thus, the code below will calculate the accuracy, TP rate, and FP rate on the `Test Set`, without returning any hyperparameters. Finally, a table is presented with each of these results.
+    
+    \ 
+    
+```{r Ex4e1, indent = "    "}
+#==============================================================================
+# Simple Logistic Regression
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Model 1
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+class.slr.m1.test.pred <- predict(class.slr.m1.train, 
+                                  newdata = 
+                                      ctrn.class[!ctrn.class$index.train, ], 
+                                  type = "response")
+hist(class.slr.m1.test.pred, col = "grey",
+     main = "Predicted probabilities: SLR Model 1",
+     sub = "Test Data",
+     breaks = 50)
+mean(class.slr.m1.test.pred)
+
+#--------------------------------------
+# Performance on test data
+#--------------------------------------
+class.slr.m1.test.perf <- class.perf(ctrn.class$DONR[!ctrn.class$index.train], 
+                                     class.slr.m1.test.pred, 
+                                     class.slr.m1.op.thresh)
+
+# Confusion Matrix
+class.slr.m1.test.perf$confMat
+
+# True Positive
+round(class.slr.m1.test.perf$TPrate, digits = 4)
+
+# False Positive
+round(class.slr.m1.test.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.slr.m1.test.perf$confMat))), digits = 4)
+
+#==============================================================================
+# Multiple Logistic Regression
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Model 1
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+class.mlr.m1.test.pred <- predict(class.mlr.m1.train, 
+                                  newdata = 
+                                      ctrn.class[!ctrn.class$index.train, ], 
+                                  type = "response")
+hist(class.mlr.m1.test.pred, col = "grey",
+     main = "Predicted probabilities: mlr Model 1",
+     sub = "Test Data",
+     breaks = 50)
+mean(class.mlr.m1.test.pred)
+
+#--------------------------------------
+# Performance on test data
+#--------------------------------------
+class.mlr.m1.test.perf <- class.perf(ctrn.class$DONR[!ctrn.class$index.train], 
+                                     class.mlr.m1.test.pred, 
+                                     class.mlr.m1.op.thresh)
+
+# Confusion Matrix
+class.mlr.m1.test.perf$confMat
+
+# True Positive
+round(class.mlr.m1.test.perf$TPrate, digits = 4)
+
+# False Positive
+round(class.mlr.m1.test.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m1.test.perf$confMat))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 2
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+class.mlr.m2.test.pred <- predict(class.mlr.m2.train, 
+                                  newdata = 
+                                      ctrn.class[!ctrn.class$index.train, ], 
+                                  type = "response")
+hist(class.mlr.m2.test.pred, col = "grey",
+     main = "Predicted probabilities: mlr Model 1",
+     sub = "Test Data",
+     breaks = 50)
+mean(class.mlr.m2.test.pred)
+
+#--------------------------------------
+# Performance on test data
+#--------------------------------------
+class.mlr.m2.test.perf <- class.perf(ctrn.class$DONR[!ctrn.class$index.train], 
+                                     class.mlr.m2.test.pred, 
+                                     class.mlr.m2.op.thresh)
+
+# Confusion Matrix
+class.mlr.m2.test.perf$confMat
+
+# True Positive
+round(class.mlr.m2.test.perf$TPrate, digits = 4)
+
+# False Positive
+round(class.mlr.m2.test.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m2.test.perf$confMat))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 3
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+class.mlr.m3.test.pred <- predict(class.mlr.m3.train, 
+                                  newdata = 
+                                      ctrn.class[!ctrn.class$index.train, ], 
+                                  type = "response")
+hist(class.mlr.m3.test.pred, col = "grey",
+     main = "Predicted probabilities: mlr Model 1",
+     sub = "Test Data",
+     breaks = 50)
+mean(class.mlr.m3.test.pred)
+
+#--------------------------------------
+# Performance on test data
+#--------------------------------------
+class.mlr.m3.test.perf <- class.perf(ctrn.class$DONR[!ctrn.class$index.train], 
+                                     class.mlr.m3.test.pred, 
+                                     class.mlr.m3.op.thresh)
+
+# Confusion Matrix
+class.mlr.m3.test.perf$confMat
+
+# True Positive
+round(class.mlr.m3.test.perf$TPrate, digits = 4)
+
+# False Positive
+round(class.mlr.m3.test.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m3.test.perf$confMat))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 4
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test data
+#--------------------------------------
+class.mlr.m4.test.pred <- predict(class.mlr.m4.train, 
+                                  newdata = 
+                                      ctrn.class[!ctrn.class$index.train, ], 
+                                  type = "response")
+hist(class.mlr.m4.test.pred, col = "grey",
+     main = "Predicted probabilities: mlr Model 1",
+     sub = "Test Data",
+     breaks = 50)
+mean(class.mlr.m4.test.pred)
+
+#--------------------------------------
+# Performance on test data
+#--------------------------------------
+class.mlr.m4.test.perf <- class.perf(ctrn.class$DONR[!ctrn.class$index.train], 
+                                     class.mlr.m4.test.pred, 
+                                     class.mlr.m4.op.thresh)
+
+# Confusion Matrix
+class.mlr.m4.test.perf$confMat
+
+# True Positive
+round(class.mlr.m4.test.perf$TPrate, digits = 4)
+
+# False Positive
+round(class.mlr.m4.test.perf$FPrate, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.mlr.m4.test.perf$confMat))), digits = 4)
+
+#==============================================================================
+# KNN
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Model 1 | k = 5
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Test data 
+#--------------------------------------
+set.seed(123)
+class.knn.m1.test.pred <- knn(ctrn.class.knn[ctrn.class$index.train, ],
+                              ctrn.class.knn[!ctrn.class$index.train, ],
+                              ctrn.class$DONR[ctrn.class$index.train],
+                              k = 5)
+
+# Confusion Matrix
+class.knn.m1.test.cm <- table(ctrn.class$DONR[!ctrn.class$index.train], 
+                              class.knn.m1.test.pred,
+                              dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.knn.m1.test.tp <- class.knn.m1.test.cm["1", "1"] / 
+                            sum(class.knn.m1.test.cm["1", ])
+round(class.knn.m1.test.tp, digits = 4)
+
+# False Positive
+class.knn.m1.test.fp <- class.knn.m1.test.cm["0", "1"] / 
+                            sum(class.knn.m1.test.cm["0", ])
+round(class.knn.m1.test.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.knn.m1.test.cm))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 2 | k = 7
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Test data 
+#--------------------------------------
+set.seed(123)
+class.knn.m2.test.pred <- knn(ctrn.class.knn[ctrn.class$index.train, ],
+                               ctrn.class.knn[!ctrn.class$index.train, ],
+                               ctrn.class$DONR[ctrn.class$index.train],
+                               k = 7)
+
+# Confusion Matrix
+class.knn.m2.test.cm <- table(ctrn.class$DONR[!ctrn.class$index.train], 
+                               class.knn.m2.test.pred,
+                               dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.knn.m2.test.tp <- class.knn.m2.test.cm["1", "1"] / 
+                            sum(class.knn.m2.test.cm["1", ])
+round(class.knn.m2.test.tp, digits = 4)
+
+# False Positive
+class.knn.m2.test.fp <- class.knn.m2.test.cm["0", "1"] / 
+                            sum(class.knn.m2.test.cm["0", ])
+round(class.knn.m2.test.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.knn.m2.test.cm))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 2 | k = 9
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Test data 
+#--------------------------------------
+set.seed(123)
+class.knn.m3.test.pred <- knn(ctrn.class.knn[ctrn.class$index.train, ],
+                               ctrn.class.knn[!ctrn.class$index.train, ],
+                               ctrn.class$DONR[ctrn.class$index.train],
+                               k = 9)
+
+# Confusion Matrix
+class.knn.m3.test.cm <- table(ctrn.class$DONR[!ctrn.class$index.train], 
+                               class.knn.m3.test.pred,
+                               dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.knn.m3.test.tp <- class.knn.m3.test.cm["1", "1"] / 
+                            sum(class.knn.m3.test.cm["1", ])
+round(class.knn.m3.test.tp, digits = 4)
+
+# False Positive
+class.knn.m3.test.fp <- class.knn.m3.test.cm["0", "1"] / 
+                            sum(class.knn.m3.test.cm["0", ])
+round(class.knn.m3.test.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.knn.m3.test.cm))), digits = 4)
+
+#==============================================================================
+# Random Forest
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Model 1
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test
+#--------------------------------------
+class.rf.m1.test.pred <- predict(class.rf.m1.train, 
+                                 newdata = 
+                                     ctrn.class[!ctrn.class$index.train, ])
+
+# Confusion Matrix
+class.rf.m1.test.cm <- table(ctrn.class$DONR[!ctrn.class$index.train],
+                             class.rf.m1.test.pred,
+                             dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.rf.m1.test.tp <- class.rf.m1.test.cm["1", "1"] / 
+                            sum(class.rf.m1.test.cm["1", ])
+round(class.rf.m1.test.tp, digits = 4)
+
+# False Positive
+class.rf.m1.test.fp <- class.rf.m1.test.cm["0", "1"] / 
+                            sum(class.rf.m1.test.cm["0", ])
+round(class.rf.m1.test.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.rf.m1.test.cm))), digits = 4)
+
+#------------------------------------------------------------------------------
+# Model 2
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on test
+#--------------------------------------
+class.rf.m2.test.pred <- predict(class.rf.m2.train, 
+                                 newdata = 
+                                     ctrn.class[!ctrn.class$index.train, ])
+
+# Confusion Matrix
+class.rf.m2.test.cm <- table(ctrn.class$DONR[!ctrn.class$index.train],
+                             class.rf.m2.test.pred,
+                             dnn = c("Actual", "Predicted"))
+
+# True Positive
+class.rf.m2.test.tp <- class.rf.m2.test.cm["1", "1"] / 
+                            sum(class.rf.m2.test.cm["1", ])
+round(class.rf.m2.test.tp, digits = 4)
+
+# False Positive
+class.rf.m2.test.fp <- class.rf.m2.test.cm["0", "1"] / 
+                            sum(class.rf.m2.test.cm["0", ])
+round(class.rf.m2.test.fp, digits = 4)
+
+# Accuracy
+round(sum(diag(prop.table(class.rf.m2.test.cm))), digits = 4)
+```
+    
+```{r Ex4e2, indent = "    "}
+#==============================================================================
+# Model Table
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Names
+#------------------------------------------------------------------------------
+# Create model names
+name.slr.m1 <- "SLR: Model 1"
+name.mlr.m1 <- "MLR: Model 1"
+name.mlr.m2 <- "MLR: Model 2"
+name.mlr.m3 <- "MLR: Model 3"
+name.mlr.m4 <- "MLR: Model 4"
+name.knn.m1 <- "KNN: Model 1"
+name.knn.m2 <- "KNN: Model 2"
+name.knn.m3 <- "KNN: Model 3"
+name.rf.m1 <- "RF: Model 1"
+name.rf.m2 <- "RF: Model 2"
+
+# Create column of model names
+table.model.name <- rbind(name.slr.m1, name.slr.m1, name.slr.m1, 
+                          name.mlr.m1, name.mlr.m1, name.mlr.m1, 
+                          name.mlr.m2, name.mlr.m2, name.mlr.m2, 
+                          name.mlr.m3, name.mlr.m3, name.mlr.m3, 
+                          name.mlr.m4, name.mlr.m4, name.mlr.m4, 
+                          name.knn.m1, name.knn.m1, name.knn.m1, 
+                          name.knn.m2, name.knn.m2, name.knn.m2, 
+                          name.knn.m3, name.knn.m3, name.knn.m3, 
+                          name.rf.m1, name.rf.m1, name.rf.m1, 
+                          name.rf.m2, name.rf.m2, name.rf.m2)
+
+#------------------------------------------------------------------------------
+# Types
+#------------------------------------------------------------------------------
+type.train <- "Training"
+type.valid <- "Validation"
+type.test <- "Test"
+
+# Create column of model types
+table.model.type <- cbind(rep(c(type.train, type.valid, type.test), 
+                              times = 10))
+
+#------------------------------------------------------------------------------
+# Names & Types
+#------------------------------------------------------------------------------
+table.model.nt <- data.frame(table.model.name, table.model.type)
+colnames(table.model.nt) <- c("Model", "Type")
+
+#------------------------------------------------------------------------------
+# Measures
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Accuracy
+#--------------------------------------
+table.accuracy <- rbind(sum(diag(prop.table(class.slr.m1.train.perf$confMat))),
+                        sum(diag(prop.table(class.slr.m1.val.perf$confMat))),
+                        sum(diag(prop.table(class.slr.m1.test.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m1.train.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m1.val.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m1.test.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m2.train.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m2.val.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m2.test.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m3.train.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m3.val.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m3.test.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m4.train.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m4.val.perf$confMat))),
+                        sum(diag(prop.table(class.mlr.m4.test.perf$confMat))),
+                        sum(diag(prop.table(class.knn.m1.train.cm))),
+                        sum(diag(prop.table(class.knn.m1.val.cm))),
+                        sum(diag(prop.table(class.knn.m1.test.cm))),
+                        sum(diag(prop.table(class.knn.m2.train.cm))),
+                        sum(diag(prop.table(class.knn.m2.val.cm))),
+                        sum(diag(prop.table(class.knn.m2.test.cm))),
+                        sum(diag(prop.table(class.knn.m3.train.cm))),
+                        sum(diag(prop.table(class.knn.m3.val.cm))),
+                        sum(diag(prop.table(class.knn.m3.test.cm))),
+                        sum(diag(prop.table(class.rf.m1.train.cm))),
+                        sum(diag(prop.table(class.rf.m1.val.cm))),
+                        sum(diag(prop.table(class.rf.m1.test.cm))),
+                        sum(diag(prop.table(class.rf.m2.train.cm))),
+                        sum(diag(prop.table(class.rf.m2.val.cm))),
+                        sum(diag(prop.table(class.rf.m2.test.cm))))
+
+# Rownames
+rownames(table.accuracy) <- seq(1, nrow(table.accuracy))
+
+# Round
+table.accuracy <- round(table.accuracy, digits = 4)
+
+#--------------------------------------
+# True Positive
+#--------------------------------------
+table.tp <- rbind(class.slr.m1.train.perf$TPrate,
+                  class.slr.m1.val.perf$TPrate,
+                  class.slr.m1.test.perf$TPrate,
+                  class.mlr.m1.train.perf$TPrate,
+                  class.mlr.m1.val.perf$TPrate,
+                  class.mlr.m1.test.perf$TPrate,
+                  class.mlr.m2.train.perf$TPrate,
+                  class.mlr.m2.val.perf$TPrate,
+                  class.mlr.m2.test.perf$TPrate,
+                  class.mlr.m3.train.perf$TPrate,
+                  class.mlr.m3.val.perf$TPrate,
+                  class.mlr.m3.test.perf$TPrate,
+                  class.mlr.m4.train.perf$TPrate,
+                  class.mlr.m4.val.perf$TPrate,
+                  class.mlr.m4.test.perf$TPrate,
+                  class.knn.m1.train.tp,
+                  class.knn.m1.val.tp,
+                  class.knn.m1.test.tp,
+                  class.knn.m2.train.tp,
+                  class.knn.m2.val.tp,
+                  class.knn.m2.test.tp,
+                  class.knn.m3.train.tp,
+                  class.knn.m3.val.tp,
+                  class.knn.m3.test.tp,
+                  class.rf.m1.train.tp,
+                  class.rf.m1.val.tp,
+                  class.rf.m1.test.tp,
+                  class.rf.m2.train.tp,
+                  class.rf.m2.val.tp,
+                  class.rf.m2.test.tp)
+
+# Rownames
+rownames(table.tp) <- seq(1, nrow(table.tp))
+
+# Round
+table.tp <- round(table.tp, digits = 4)
+
+#--------------------------------------
+# False Positive
+#--------------------------------------
+table.fp <- rbind(class.slr.m1.train.perf$FPrate,
+                  class.slr.m1.val.perf$FPrate,
+                  class.slr.m1.test.perf$FPrate,
+                  class.mlr.m1.train.perf$FPrate,
+                  class.mlr.m1.val.perf$FPrate,
+                  class.mlr.m1.test.perf$FPrate,
+                  class.mlr.m2.train.perf$FPrate,
+                  class.mlr.m2.val.perf$FPrate,
+                  class.mlr.m2.test.perf$FPrate,
+                  class.mlr.m3.train.perf$FPrate,
+                  class.mlr.m3.val.perf$FPrate,
+                  class.mlr.m3.test.perf$FPrate,
+                  class.mlr.m4.train.perf$FPrate,
+                  class.mlr.m4.val.perf$FPrate,
+                  class.mlr.m4.test.perf$FPrate,
+                  class.knn.m1.train.fp,
+                  class.knn.m1.val.fp,
+                  class.knn.m1.test.fp,
+                  class.knn.m2.train.fp,
+                  class.knn.m2.val.fp,
+                  class.knn.m2.test.fp,
+                  class.knn.m3.train.fp,
+                  class.knn.m3.val.fp,
+                  class.knn.m3.test.fp,
+                  class.rf.m1.train.fp,
+                  class.rf.m1.val.fp,
+                  class.rf.m1.test.fp,
+                  class.rf.m2.train.fp,
+                  class.rf.m2.val.fp,
+                  class.rf.m2.test.fp)
+
+# Rownames
+rownames(table.fp) <- seq(1, nrow(table.fp))
+
+# Round
+table.fp <- round(table.fp, digits = 4)
+
+#------------------------------------------------------------------------------
+# Combined
+#------------------------------------------------------------------------------
+
+# Create table
+table <- data.frame(table.model.nt, table.accuracy, table.tp, table.fp)
+
+# Rename columns
+colnames(table)[3] <- "Accuracy"
+colnames(table)[4] <- "True Positive"
+colnames(table)[5] <- "False Positive"
+
+# Table
+table
+```
+    
+    \ 
+    
+5. Model Selection
+    
+Use the table you generated in Exercise 4 to select the best model for Part 4 of the Charity Project.
+    
+    (a) Comment on the predictive accuracy you get from your models. Note that the Training Subset performance metrics are included for a side-by-side comparison with the Validation Subset and Test Set performance metrics. In general, the Validation Subset and Test Set metrics will be less favorable than the Training Subset metrics.
+    
+    \ 
+    
+    __Comments__: Very surprisingly, the `KNN` method performed best across all model types and interactions. `M2` used a value of $K = 7$, and performed better than `M3` which used a value of $K = 9$. The variables passed to the `KNN` model were standardized using the `R` function `scale()`. However, the `KNN` models only used the numeric variables in the dataset, so no factor variables were included. However, missing flag variables were (these were dummy variables assigned for `NA` values in the dataset). 
+    
+    _However_, some things seem too good to be true. When looking at the _True Positive_ and _False Positive_ rates, it's clear that perhaps this definition of `Accuracy` may not be the same one used as in other models.
+    
+    The full _Random Forest_ model also performed well, though not nearly as well as `KNN`. The nested _Random Forest_ model used the same four variables as the `Multiple Linear Regression` model used, yet did far worse than the full model.
+    
+    Lastly, the _Multiple Logistic Regression_ model had 'middle of the road' accuracy, yet some of the best _True Positive_ and _False Positive_ rates. The biggest jump in predictive accuracy from the training or validation sets to the test set was the _Simple Logistic Regression_ model.
+    
+    \ 
+    
+b. Explain which of your models you select as being the best performing model and why. Note that model selection should be based on the Test Set metrics.
+    
+    \ 
+    
+    __Comments__: All of the _Multiple Linear Regression_ models did well on _True Positive_ rates, and had similar accuracy. However, the highest consistent accuracy across the board was shown from `M4`. This was also the simplest model. While the other models were close (and indeed had higher _True Positive_ rates), the model uses a total of _four_ variables: `TDON`, `MEDHVAL`, `NUMPRM12`, and `RFA_97_A` (levels `E`, `F`, and `G` were selected for use in the model). The `M4` model is the chosen model.
+    
+    \ 
+    
+```{r FIN}
+# FIN
+
+# Session info
+sessionInfo()
+```
