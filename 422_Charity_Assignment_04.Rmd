@@ -1,0 +1,719 @@
+---
+title: "422_Charity_Assignment_04"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+Workspace cleanup and prep:
+
+```{r setup.R, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(doParallel)
+library(missForest)
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+```{r Functions, message = F, results = "hide"}
+#==============================================================================
+# Functions
+#==============================================================================
+
+#--------------------------------------
+# GitHub
+#--------------------------------------
+# Create function to source functions from GitHub
+source.GitHub <- function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", "cacert.pem",
+                                                      package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url <- "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+
+#--------------------------------------
+# Classification Performance
+#--------------------------------------
+class.perf <- function(target, probs, thresh){
+    
+    # Classify based on predicted probabilities and optimal threshold.
+    predClass <- rep("0", length(probs))
+    predClass[probs > thresh] <- "1"
+    predClass <- factor(predClass)
+    
+    # Generate confusion matrix for training data
+    confMat <- table(target, predClass, dnn = c("Actual", "Predicted"))
+    
+    # Calculate TP and FP rates.
+    # Note:these calculations will need to be modified if you transpose
+    #   the confusion matrix from the version above.
+    TPrate <- confMat["1", "1"] / sum(confMat["1", ])
+    FPrate <- confMat["0", "1"] / sum(confMat["0", ])
+    
+    # Store results in list to pass out of function.
+    results <- list(predClass = predClass, confMat = confMat, 
+                    TPrate = TPrate, FPrate = FPrate)
+}
+
+#--------------------------------------
+# Ranked Donors
+#--------------------------------------
+outputForRankedDonors = function(numBins,rankVar,dataToRank)
+{
+  rankedDonors = dataToRank[order(dataToRank[[rankVar]],decreasing=TRUE),]
+  qVals = quantile(rankedDonors[[rankVar]],probs=c(0:numBins)/numBins)
+  rankedDonors$Bin = rev(cut(rankedDonors[[rankVar]],breaks=qVals,
+                             include.lowest=TRUE,right=FALSE,
+                             labels=as.character(1:numBins))) # Bin 1 is top decile, bin 10 is bottom decile
+  donorTable = data.frame(
+    Num.Mailed=unlist(by(rankedDonors,rankedDonors$Bin,nrow,simplify=FALSE)),
+    Donors=unlist(by(rankedDonors$DONR == "1",rankedDonors$Bin,sum,simplify=FALSE)),
+    Donations=unlist(by(rankedDonors$DAMT,rankedDonors$Bin,sum,simplify=FALSE))
+  )
+  donorTable$Cum.Mailed = cumsum(donorTable$Num.Mailed)
+  donorTable$Cum.Donors = cumsum(donorTable$Donors)
+  donorTable$Cum.Donations = cumsum(donorTable$Donations)
+  
+  mailingTable = data.frame(Bins.Mailed=character(length=numBins))
+  mailingTable$Bins.Mailed = paste("1 thru",1:numBins)
+  mailingTable$Num.Mailed = donorTable$Cum.Mailed
+  mailingTable$Num.Donors = donorTable$Cum.Donors
+  mailingTable$Success.Rate = mailingTable$Num.Donors / mailingTable$Num.Mailed * 100
+  mailingTable$Total.Cost = 0.68 * mailingTable$Num.Mailed
+  mailingTable$Total.Donations = donorTable$Cum.Donations
+  mailingTable$Total.Profit = mailingTable$Total.Donations - mailingTable$Total.Cost
+  mailingTable$Average.Donation = mailingTable$Total.Donations / mailingTable$Num.Donors
+  
+  return(list(qVals=qVals,Donor.Table=donorTable,Mailing.Table=mailingTable))
+}
+```
+
+## Charity Problem - Part 4
+
+### Exercises
+
+1. Data Preparation
+    
+    \ 
+    
+    For this part of the assignment, you will be provided the data file __charityTESTwithVAL.csv__, a file that contains test data (values for DONR and DAMT are not provided) and some additional validation data (values for DONR and DAMT are provided). The validation data contained in this file is intended to be used for validating various mailing list selection rules.
+    
+    \ 
+    
+    __Note__: To save time in producing the document, the option `eval = F` was specified in each chunk below. Each step was executed on the __charityTESTwithVAL.csv__ dataset, then saved. The results are loaded in the chunk below. The code is included to illustrate each step along the way. The variables `DONR` and `DAMT` were excluded from multiple imputation.
+    
+    \ 
+    
+```{r Ex1base1, indent = "    "}
+# Load data
+load(file = file.path("C:/Users/michael.gilbert/Dropbox/R", 
+                      "charityData.RData"))
+```
+    
+    (a) Import the data from __charityTESTwithVAL.csv__.
+    
+    \ 
+    
+```{r Ex1a1, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Data Import
+#------------------------------------------------------------------------------
+
+# Load data
+ctrn.tv <- read.csv("~/charityTESTwithVAL.csv", header = T, 
+                    na.strings = c("", " ", "NA"))
+
+# Assign ID as index
+rownames(ctrn.tv) <- ctrn.tv$ID
+
+# Drop ID
+ctrn.tv <- subset(ctrn.tv, select = -ID)
+```
+    
+    \ 
+    
+    (b) Apply data preparation steps to this data that are identical to those you applied to the training data. These steps may include conversion of variables to factor variables, imputation of missing values, and calculation of derived variables.
+    
+    \ 
+    
+```{r Ex1b1, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Variable Conversions
+#------------------------------------------------------------------------------
+
+# DONR = binary indicator for response to mailing
+ctrn.tv$DONR <- as.factor(ctrn.tv$DONR)
+
+# HOME = binary indicator variable for owning a home
+ctrn.tv$HOME <- as.factor(ctrn.tv$HOME)
+
+# HINC = household income
+ctrn.tv$HINC <- as.factor(ctrn.tv$HINC)
+
+# GENDER = only four valid levels, but has six
+ctrn.tv$GENDER[!is.na(ctrn.tv$GENDER) & ctrn.tv$GENDER == "A"] <- NA
+ctrn.tv$GENDER[!is.na(ctrn.tv$GENDER) & ctrn.tv$GENDER == "C"] <- NA
+
+# Remove levels with zero observations ("A", "C")
+ctrn.tv$GENDER <- factor(ctrn.tv$GENDER)
+
+# RFA_96 = concatenated 'intelligent' string
+ctrn.tv$RFA_96_R <- as.factor(substr(ctrn.tv$RFA_96, 1, 1))
+ctrn.tv$RFA_96_F <- as.factor(substr(ctrn.tv$RFA_96, 2, 2))
+ctrn.tv$RFA_96_A <- as.factor(substr(ctrn.tv$RFA_96, 3, 3))
+
+# RFA_97 = concatenated 'intelligent' string
+ctrn.tv$RFA_97_R <- as.factor(substr(ctrn.tv$RFA_97, 1, 1))
+ctrn.tv$RFA_97_F <- as.factor(substr(ctrn.tv$RFA_97, 2, 2))
+ctrn.tv$RFA_97_A <- as.factor(substr(ctrn.tv$RFA_97, 3, 3))
+
+# Be sure to validate the splits as correct! Can use table:
+# table(ctrn.tv$RFA_96, ctrn.tv$RFA_96_R)
+
+# Drop RFA_96, RFA_97, and RFA_97_R (factor variable with only one level)
+ctrn.tv <- subset(ctrn.tv, select = -c(RFA_96, RFA_97, RFA_97_R))
+```
+    
+```{r Ex1b2, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Missing Flags
+#------------------------------------------------------------------------------
+
+# Assign full column names
+ctrn.tv.cn.all <- colnames(ctrn.tv)
+
+# Create missing flags
+ctrn.tv <- miss.flag(ctrn.tv, ctrn.tv.cn.all)
+
+# Sum of 'NA' values in data.frame(ctrn) by variable
+colSums(is.na(ctrn.tv))[colSums(is.na(ctrn.tv)) > 0]
+
+# Compare to sum of flag variables
+colSums(ctrn.tv[, grep("^MF_", names(ctrn.tv))])
+
+# Drop MF_DONR and MF_DAMT
+ctrn.tv <- subset(ctrn.tv, select = -c(MF_DONR, MF_DAMT))
+```
+    
+```{r Ex1b3, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Imputations
+#------------------------------------------------------------------------------
+
+# Create clone verison of data.frame, drop DONR and DAMT
+ctrn.tv.imp <- subset(ctrn.tv, select = -c(DONR, DAMT))
+
+# Conduct MI
+ptm <- proc.time()
+registerDoParallel(cores = 3)
+ctrn.tv.mi <- missForest(ctrn.tv.imp, ntree = 400, verbose = T, 
+                         parallelize = "forests")
+proc.time() - ptm; rm(ptm)
+
+# View out-of-bag error (OOB) from MI
+ctrn.tv.mi.oob <- ctrn.tv.mi$OOBerror; ctrn.tv.mi.oob
+
+# Assign results back to data.frame
+ctrn.tv.imp <- ctrn.tv.mi$ximp
+
+# Validate no NA values
+sum(is.na(ctrn.tv.imp))
+
+# Data munging
+ctrn.tv <- subset(ctrn.tv, select = c(DONR, DAMT))
+ctrn.tv <- data.frame(ctrn.tv, ctrn.tv.imp)
+
+# Verify missing values only in DONR and DAMT
+colSums(is.na(ctrn.tv))[colSums(is.na(ctrn.tv)) > 0]
+
+# Cleanup
+rm(ctrn.tv.mi)
+rm(ctrn.tv.mi.oob)
+rm(ctrn.tv.imp)
+```
+    
+```{r Ex1b4, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Variable Derivations, Trims, Transforms, and Levels
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Derivations
+#--------------------------------------
+
+# Create lifetime promotion-to-gifts ratio
+# Average of number of promotions sent for each gift
+# Rounding off to whole number; cannot get 5.5 promotions
+ctrn.tv$PROMGIFT <- round(ctrn.tv$NUMPROM / ctrn.tv$NGIFTALL, digits = 0)
+
+# Create lifetime gift-to-promotion rate
+# Conversion rate, or effectiveness rate
+ctrn.tv$GIFTPROM <- ctrn.tv$NGIFTALL / ctrn.tv$NUMPROM
+
+# Create mean donation amount
+ctrn.tv$MEANAMT <- ctrn.tv$RAMNTALL / ctrn.tv$NGIFTALL
+```
+    
+```{r Ex1b5, indent = "    ", eval = F}
+#------------------------------------------------------------------------------
+# Data Munging
+#------------------------------------------------------------------------------
+
+# Create index for Test Val (tv)
+ctrn.tv$index.tv <- !is.na(ctrn.tv$DONR)
+
+# Separate data.frame
+ctrn.val <- ctrn.tv[ctrn.tv$index.tv, ]
+ctrn.test <- ctrn.tv[!ctrn.tv$index.tv, ]
+
+# Cleanup
+rm(ctrn.tv)
+```
+    
+```{r Ex1b6, indent = "    ", eval = F}
+# Save data
+save(ctrn.class, ctrn.og, ctrn.reg, ctrn.test, ctrn.val, 
+     file = file.path(getwd(), "charityData.RData"))
+```
+    
+    \ 
+    
+2. Regression Problem
+    
+    \ 
+    
+    In Part 2 of the Charity Project, you developed and validated multiple regression models for the continuous response `DAMT`.
+    
+    \ 
+    
+    (a) Summarize the model that you selected as your best model for the Regression Problem in Part 2. What is the model formula? How did the model perform on the training data and the validation data?
+    
+    \ 
+    
+    __Comments__: `SLR Model 1` was selected for the Regression Problem in Part 2. The model was a simple linear regression against the variable `LASTGIFT`. The formula for `SLR Model 1` is:
+    
+    $$Y = 3.91859 + 0.77108{LASTGIFT}$$
+    
+    Though the model did not have the lowest _k_-Fold MSE or Test MSE, it unequivocally had the lowest _and most consistent_ values for _k_-Fold MSE (69.14600) and Test MSE (69.66917). Though the value of Train MSE was not to be used in selecting a model, `SLR Model 1` still had the most consistent values across _all_ MSE values.
+    
+    \ 
+    
+    (b) Refit your best model to all of the Regression Problem training data (i.e. all data in __charityTRN.csv__ corresponding to `DONR = 1`). If your model makes use of any hyperparameters (such as the $\lambda$ value for Lasso) use the value you obtained in Part 2; do not re-tune the hyperparameters. The goal of this step is to maintain all of the decisions that were made in Part 2 while updating the model coefficients to fit the full set of training data available.
+    
+    \ 
+    
+```{r Ex2b1, indent = "    "}
+#------------------------------------------------------------------------------
+# SLR Model 1 - Refit
+#------------------------------------------------------------------------------
+
+# Build model
+ctrn.reg.slr.m1 <- glm(DAMT ~ LASTGIFT, data = ctrn.reg, family = gaussian)
+
+# Summary statistics
+summary(ctrn.reg.slr.m1)
+```
+    
+    \ 
+    
+    (c) Predict DAMT for the validation data contained in __charityTESTwithVAL.csv__. Use the version of the model you fit in Exercise 2b.
+    
+    \ 
+    
+```{r Ex2c1, indent = "    "}
+#------------------------------------------------------------------------------
+# SLR Model 1 | Validation Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict DAMT on validation data
+#--------------------------------------
+ctrn.val$DAMT.Pred <- predict(ctrn.reg.slr.m1, newdata = ctrn.val)
+```
+    
+    \ 
+    
+3. Classification Problem
+    
+    \ 
+    
+    In Part 3 of the Charity Project, you developed and validated multiple classification models for the binary response `DONR`.
+    
+    \ 
+    
+    (a) Summarize the model that you selected as your best model for the Classification Problem in Part 3. What is the model formula? How did the model perform on the training data and the validation data?
+    
+    \ 
+    
+    __Comments__: `MLR Model 4` was selected for the Classification Problem in Part 3. Here, `MLR` stands for multiple logistic regression. The model used four variables: `MEDHVAL`, `NUMPRM12`, `RFA_97_A`, and `TDON`. The formula for `MLR Model 4` is:
+    
+    $$
+    \begin{aligned}
+    Y = -1.1790 -0.03743{TDON} +0.00014{MEDHVAL} -0.00366{NUMPRM12} \\
+    -0.3899{RFA\_97\_AE} -0.7646{RFA\_97\_AF} -0.9997{RFA\_97\_AG}
+    \end{aligned}
+    $$
+    
+    Of the other `MLR` models, this model had the highest _and most consistent_ values of accuracy, and lowest values of false positives for both the Training and Validation datasets. While the true positives were not the highest, they were competitive with the other `MLR` models. Though the results of the Test datasets were not to be used in selecting a model, `MLR Model 4` still had the most consistent values for accuracy.
+    
+    \ 
+    
+    (b) Refit your best model to all of the Classification Problem training data (i.e. all data in __charityTRN.csv__). Do not re-tune hyperparameters, such as the threshold $\tau$ used for classification. Again, the goal of this step is to maintain all of the decisions that were made in Part 3 while updating the model coefficients to fit the full set of training data available.
+    
+    \ 
+    
+```{r Ex3b1, indent = "    "}
+#------------------------------------------------------------------------------
+# MLR Model 4 - Refit
+#------------------------------------------------------------------------------
+
+# Build model
+ctrn.class.mlr.m4 <- glm(DONR ~ TDON + MEDHVAL + NUMPRM12 + RFA_97_A, 
+                         data = ctrn.class, family = binomial(link = logit))
+
+# Summary statistics
+summary(ctrn.class.mlr.m4)
+```
+    
+    \ 
+    
+    (c) Predict DONR for the validation data contained in __charityTESTwithVAL.csv__. Use the version of the model you fit in Exercise 3b. For this step, you will want to record both the likelihood score produced by your model (call this `PDONR`) and the donor classification (`DONR`).
+    
+    \ 
+    
+```{r Ex3c1, indent = "    "}
+#------------------------------------------------------------------------------
+# MLR Model 4 | Validation Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict PDONR on validation data
+#--------------------------------------
+ctrn.val$PDONR.Pred <- predict(ctrn.class.mlr.m4, newdata = ctrn.val, 
+                               type = "response")
+
+#--------------------------------------
+# Predict DONR on validation data
+#--------------------------------------
+
+# Use same optimal threshold value from MLR Model 4 in Part 3
+thresh <- 0.0495
+
+# Validation data
+ctrn.val$DONR.Pred <- 0
+ctrn.val$DONR.Pred[ctrn.val$PDONR.Pred > thresh] <- 1
+ctrn.val$DONR.Pred <- factor(ctrn.val$DONR.Pred)
+```
+    
+    \ 
+    
+4. Mailing List Selection
+    
+    \ 
+    
+    The purpose of this exercise is to test various strategies for selecting whom to mail in order to obtain the maximum profit for the charity. You will be provided with sample code that gives examples of ranking individuals by their `PDONR` values or by `EXAMT = PDONR` $\times$ `DAMT` (the expected amount of donation = predicted likelihood $\times$ predicted donation amount). The ranked scores are binned (e.g. into deciles) and a score cut-off (corresponding to a number of bins to mail) is selected.
+    
+    Recall that there is a cost of $0.68 for each person that you choose to mail. Using the validation data provided in __charityTESTwithVAL.csv__, you can calculate the donations received from a particular mailing list (selected from within the individuals in the validation dataset).
+    
+    \ 
+    
+    (a) The mailing list selection strategy illustrated in the sample code requires you to choose a score to rank and select a cutoff to use on that score. Evaluate this strategy by ranking various scores and calculating the profit obtained on the validation dataset. Scores that you might consider using include the predicted values of `DONR`, `PDONR`, and `EXAMT`. Summarize your findings with tables and figures as appropriate.
+    
+    \ 
+    
+```{r Ex4a1, indent = "    "}
+#------------------------------------------------------------------------------
+# Score Models - Validation Data
+#------------------------------------------------------------------------------
+
+# Regression Predictions - MSE
+ctrn.reg.mse <- mean((ctrn.val$DAMT.Pred[ctrn.val$DONR == "1"] - 
+                      ctrn.val$DAMT[ctrn.val$DONR == "1"])^2, na.rm = T)
+round(ctrn.reg.mse, digits = 4)
+
+# Classification Predictions - MSE (expressed in percentage terms)
+ctrn.class.mse <- mean(ctrn.val$DONR != ctrn.val$DONR.Pred, na.rm = T)
+round(ctrn.class.mse * 100, digits = 4)
+
+# Confusion Matrix
+cm <- table(ctrn.val$DONR, ctrn.val$DONR.Pred, dnn = c("Actual", "Predicted"))
+cm
+
+# True Positive (expressed in percentage terms)
+tp <- cm["1", "1"] / sum(cm["1", ])
+round(tp * 100, digits = 4)
+
+# False Positive (expressed in percentage terms)
+fp <- cm["0", "1"] / sum(cm["0", ])
+round(fp * 100, digits = 4)
+
+# Accuracy (expressed in percentage terms)
+round(sum(diag(prop.table(cm))) * 100, digits = 4)
+```
+    
+```{r Ex4a2, indent = "    "}
+#------------------------------------------------------------------------------
+# Ranked Donors
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Ranked by PDONR
+#--------------------------------------
+
+# Create ranking
+num.bins <- 10
+out.pdonr <- outputForRankedDonors(num.bins, rankVar = "PDONR.Pred", 
+                                   dataToRank = ctrn.val)
+print(out.pdonr$Donor.Table)
+
+# Assign table
+pdonr <- out.pdonr$Mailing.Table
+
+# Calculate Gross Profit Margin
+pdonr$Gross.Margin <- round((pdonr$Total.Profit / pdonr$Total.Donations) * 100, 
+                            digits = 2)
+
+# Print table
+pdonr
+
+# Identify bin which maximizes Gross Profit Margin
+which.max(pdonr$Gross.Margin)
+
+#--------------------------------------
+# Ranked by EXAMT
+#--------------------------------------
+
+# Validation data
+ctrn.val$EXAMT.Pred <- ctrn.val$PDONR.Pred * ctrn.val$DAMT.Pred
+
+# Create ranking
+num.bins <- 10
+out.examt <- outputForRankedDonors(num.bins, rankVar = "EXAMT.Pred", 
+                                   dataToRank = ctrn.val)
+print(out.examt$Donor.Table)
+
+# Assign table
+examt <- out.examt$Mailing.Table
+
+# Calculate gross profit margin
+examt$Gross.Margin <- round((examt$Total.Profit / examt$Total.Donations) * 100, 
+                            digits = 2)
+
+# Print table
+examt
+
+# Identify bin which maximizes gross profit margin
+which.max(examt$Gross.Margin)
+```
+    
+    \ 
+    
+    (b) [Optional] If there are other rules for mailing list selection that you have in mind, give them a try. Evaluate them on the validation dataset. Such a rule might be a minor modification to the strategy explored in Part A or a substantively different approach. Summarize your findings with tables and figures as appropriate.
+    
+    \ 
+    
+    __Comments__: Though not necessarily a "rule", rather than focusing on maximizing profit in _absolute dollars_, to focus on maximizing profit via _gross profit margin_. That is truly the most profitable strategy, as the ratio of what-you-pay vs. what-you-get is maximized. 
+    
+    For `PDONR`, the gross profit margin is maximized by mailing bins 1 thru 9, at `18.66%`. 
+    
+    For `EXAMT`, the gross profit margin is maximized by mailing bins 1 thru 1, at `57.02%`. 
+    
+    \ 
+    
+    (c) Select a single mailing list selection strategy to be applied to the test data. Explain your reasoning for why you chose that strategy.
+    
+    \ 
+    
+```{r Ex4c1, indent = "    "}
+#------------------------------------------------------------------------------
+# Plot Profit Profiles
+#------------------------------------------------------------------------------
+yLims <- c(0, 500 + 1000 * 
+               ceiling(max(c(pdonr$Total.Profit, examt$Total.Profit)) / 1000))
+plot(pdonr$Total.Profit, type = "l", col = "blue", main = "Profit Profiles", 
+     xlab = "Bin", ylab = "Profit ($)", ylim = yLims)
+lines(examt$Total.Profit, col = "red")
+points(pdonr$Total.Profit, pch = 16, col = "blue")
+points(examt$Total.Profit, pch = 16, col = "red")
+points(which.max(pdonr$Total.Profit), max(pdonr$Total.Profit), 
+       pch = 21, bg = "green")
+points(which.max(examt$Total.Profit), max(examt$Total.Profit), 
+       pch = 21, bg = "green")
+legend(x = "topright", legend = c("PDONR", "EXAMT", "Max Profit"), 
+       col = c("blue", "red", "green"), lty = c(1, 1, 1), pch = 16)
+
+#------------------------------------------------------------------------------
+# Plot Gross Profit Margin Profiles
+#------------------------------------------------------------------------------
+plot(pdonr$Gross.Margin, type = "l", col = "blue", 
+     main = "Gross Profit Margin Profiles", 
+     xlab = "Bin", ylab = "Gross Profit Margin (%)", ylim = c(0, 100))
+lines(examt$Gross.Margin, col = "red")
+points(pdonr$Gross.Margin, pch = 16, col = "blue")
+points(examt$Gross.Margin, pch = 16, col = "red")
+points(which.max(pdonr$Gross.Margin), max(pdonr$Gross.Margin), 
+       pch = 21, bg = "green")
+points(which.max(examt$Gross.Margin), max(examt$Gross.Margin), 
+       pch = 21, bg = "green")
+legend(x = "topright", legend = c("PDONR", "EXAMT", "Max GPM"), 
+       col = c("blue", "red", "green"), lty = c(1, 1, 1), pch = 16)
+```
+    
+```{r Ex4c2, indent = "    "}
+#------------------------------------------------------------------------------
+# Determine Maximium Profit
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# PDONR
+#--------------------------------------
+which.max(pdonr$Total.Profit)
+which.max(pdonr$Gross.Margin)
+
+#--------------------------------------
+# EXAMT
+#--------------------------------------
+which.max(examt$Total.Profit)
+which.max(examt$Gross.Margin)
+```
+    
+    \ 
+    
+    __Comments__: The graph suggests a mailing strategy using `EXAMT` with the number of bins set to 1 thru 7. Indeed, this is the maximum profit in _absolute dollars_, at $2433.64. However, the gross profit margin is only 26.02%. On the other hand, a mailing strategy using `EXAMT` with the number of bins set to 1 thru 1 results in a total profit of $1311.78, _but at a gross profit margin of 57.02%_.
+    
+    \ 
+    
+5. Predictions on Test Set
+    
+    \ 
+    
+    (a) Use the regression model you fit in Exercise 2b to predict `DAMT` for the individuals in the test dataset.
+    
+    \ 
+    
+```{r Ex5a1, indent = "    "}
+#------------------------------------------------------------------------------
+# SLR Model 1 | Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict DAMT on test data
+#--------------------------------------
+ctrn.test$DAMT <- predict(ctrn.reg.slr.m1, newdata = ctrn.test)
+```
+    
+    \ 
+    
+    (b) Use the classification model you fit in Exercise 3b to predict `PDONR` and `DONR` for individuals in the test dataset.
+    
+    \ 
+    
+```{r Ex5b1, indent = "    "}
+#------------------------------------------------------------------------------
+# MLR Model 4 | Test Data
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Predict on PDONR on test data
+#--------------------------------------
+ctrn.test$PDONR <- predict(ctrn.class.mlr.m4, newdata = ctrn.test, 
+                           type = "response")
+
+#--------------------------------------
+# Predict DONR on test data
+#--------------------------------------
+
+# Use same optimal threshold value from MLR Model 4 in Part 3
+thresh <- 0.0495
+
+# Test data
+ctrn.test$DONR <- 0
+ctrn.test$DONR[ctrn.test$PDONR > thresh] <- 1
+ctrn.test$DONR <- factor(ctrn.test$DONR)
+```
+    
+    \ 
+    
+    (c) Write your predictions out to a CSV file called __charityPredTEST.csv__. This CSV file should contain the following columns: `ID`, `DONR`, `PDONR`, and `DAMT`.
+    
+    \ 
+    
+```{r Ex5c1, indent = "    "}
+#------------------------------------------------------------------------------
+# Export Predictions
+#------------------------------------------------------------------------------
+
+# Assign rownames back to variable
+ctrn.test$ID <- as.numeric(rownames(ctrn.test))
+
+# Export CSV
+write.csv(ctrn.test[, c("ID", "DONR", "PDONR", "DAMT")], 
+          file = file.path(getwd(), "charityPredTEST.csv"), row.names = F)
+```
+    
+    \ 
+    
+    (d) Apply the mailing list selection strategy that you chose in Exercise 4c to the test dataset.
+    
+    \ 
+    
+```{r Ex5d1, indent = "    "}
+#------------------------------------------------------------------------------
+# Mailing Strategy
+#------------------------------------------------------------------------------
+
+# Assign cutoff value (based on gross profit margin)
+cutoff <- out.examt$qVals[num.bins+1-1]
+mailer <- data.frame(ID = ctrn.test$ID[ctrn.test$EXAMT >= cutoff])
+```
+    
+    \ 
+    
+    (e) Write the `ID` numbers of individuals selected for the mailing list to a CSV file called __charityFinalList.csv__. This CSV file needs only a single column: `ID`.
+    
+    \ 
+    
+```{r Ex5e1, indent = "    "}
+#------------------------------------------------------------------------------
+# Export Mailing List
+#------------------------------------------------------------------------------
+
+# Export CSV
+write.csv(mailer, file = file.path(getwd(), "charityFinalList.csv"), 
+          row.names = F)
+```
+    
+    \ 
+    
+```{r FIN}
+# FIN
+
+# Session info
+sessionInfo()
+```
