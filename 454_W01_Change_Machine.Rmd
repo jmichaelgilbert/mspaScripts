@@ -17,34 +17,33 @@ geometry: margin = 0.5in
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Quick R Knowledge Check
+# The Change Machine
 
-## The Change Machine
-
-Write a R function named change.machine() that takes an input value between 0 and 100 and returns a R list object of the number of quarters, dimes, nickels, and pennies required to provide the correct change. If the user inputs a number not in (0,100), then the function should print an error message to the terminal: 'The input value must be between 0 and 100.' 
+Write a R function named change.machine() that takes an input value between 0 and 100 and returns a R list object of the number of quarters, dimes, nickels, and pennies required to provide the correct change. If the user inputs a number not in (0,100), then the function should print an error message to the terminal: 'The input value must be between 0 and 100.'. 
 
 ```{r Change_Machine}
 #==============================================================================
 # Function
 #==============================================================================
-change.machine <- function(val){
+change.machine = function(val){
+    val = floor(val + 0.5)
     validRange = seq(0, 100)
     if (!val %in% validRange){
-        stop("The inpute value must be between 0 and 100.")
+        stop("The input value must be between 0 and 100.")
     }
-    q <- val %/% 25; q.rem <- val %% 25
-    d <- q.rem %/% 10; d.rem <- q.rem %% 10
-    n <- d.rem %/% 5; n.rem <- d.rem %% 5
-    p <- n.rem %/% 1
-    change <- list(Quarters = q, Dimes = d, Nickels = n, Pennies = p)
-    assign("change", change, envir = .GlobalEnv)
+    q = val %/% 25; q.rem = val %% 25
+    d = q.rem %/% 10; d.rem = q.rem %% 10
+    n = d.rem %/% 5; n.rem = d.rem %% 5
+    p = n.rem %/% 1
+    assign("change", list(Quarters = q, Dimes = d, Nickels = n, Pennies = p), 
+           envir = .GlobalEnv)
+    print(change)
 }
 
 #==============================================================================
 # Output
 #==============================================================================
 change.machine(88)
-change
 ```
 
 ```{r FIN}

@@ -21,21 +21,22 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## The Change Machine
 
-Write a R function named change.machine() that takes an input value between 0 and 100 and returns a R list object of the number of quarters, dimes, nickels, and pennies required to provide the correct change. If the user inputs a number not in (0,100), then the function should print an error message to the terminal: 'The input value must be between 0 and 100.' 
+Write a R function named change.machine() that takes an input value between 0 and 100 and returns a R list object of the number of quarters, dimes, nickels, and pennies required to provide the correct change. If the user inputs a number not in (0,100), then the function should print an error message to the terminal: 'The input value must be between 0 and 100.'. 
 
-```{r}
+```{r Change_Machine}
 #==============================================================================
 # Function
 #==============================================================================
-change.machine <- function(val){
+change.machine = function(val){
+    val = floor(val + 0.5)
     validRange = seq(0, 100)
     if (!val %in% validRange){
-        stop("The inpute value must be between 0 and 100.")
+        stop("The input value must be between 0 and 100.")
     }
-    q <- val %/% 25; q.rem <- val %% 25
-    d <- q.rem %/% 10; d.rem <- q.rem %% 10
-    n <- d.rem %/% 5; n.rem <- d.rem %% 5
-    p <- n.rem %/% 1
+    q = val %/% 25; q.rem = val %% 25
+    d = q.rem %/% 10; d.rem = q.rem %% 10
+    n = d.rem %/% 5; n.rem = d.rem %% 5
+    p = n.rem %/% 1
     assign("change", list(Quarters = q, Dimes = d, Nickels = n, Pennies = p), 
            envir = .GlobalEnv)
     print(change)
@@ -51,40 +52,40 @@ change.machine(88)
 
 Write a R function named my.summary() that will take a data frame of numeric variables and compute summary statistics for the variables. The summary statistics should be the quantiles (0.01,0.05,0.25,0.5,0.75,0.95,0.99), the mean, the variance, the min, and the max. The summary statistics should be output in a R data frame structure. 
 
-```{r}
+```{r Summary}
 #==============================================================================
 # Function
 #==============================================================================
-my.summary <- function(df){
-    table.summary <- data.frame()
-    cn <- colnames(df[, !sapply(df, is.factor)])
+my.summary = function(df){
+    table.summary = data.frame()
+    cn = colnames(df[, !sapply(df, is.factor)])
     for (num.var in cn){
-        qt <- quantile(df[, num.var],
-                       probs = c(0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99))
-        mu <- mean(df[, num.var])
-        vr <- var(df[, num.var])
-        mn <- min(df[, num.var])
-        mx <- max(df[, num.var])
-        name.var <- paste(deparse(substitute(df)), "$", num.var, sep = "")
-        table.row <- as.data.frame(cbind(name.var,
-                                         round(cbind(t(qt), mu, vr, mn, mx), 
-                                         digits = 2)))
-        table.summary <- rbind(table.summary, table.row)
+        qt = quantile(df[, num.var],
+                      probs = c(0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99))
+        mu = mean(df[, num.var])
+        vr = var(df[, num.var])
+        mn = min(df[, num.var])
+        mx = max(df[, num.var])
+        name.var = paste(deparse(substitute(df)), "$", num.var, sep = "")
+        table.row = as.data.frame(cbind(name.var,
+                                  round(cbind(t(qt), mu, vr, mn, mx), 
+                                  digits = 2)))
+        table.summary = rbind(table.summary, table.row)
     }
-    rownames(table.summary) <- table.summary[, 1]
-    table.summary <- subset(table.summary, select = -name.var)
-    colnames(table.summary)[8] <- "Mean"
-    colnames(table.summary)[9] <- "Variance"
-    colnames(table.summary)[10] <- "Minimum"
-    colnames(table.summary)[11] <- "Maximum"
+    rownames(table.summary) = table.summary[, 1]
+    table.summary = subset(table.summary, select = (-name.var))
+    colnames(table.summary)[8] = "Mean"
+    colnames(table.summary)[9] = "Variance"
+    colnames(table.summary)[10] = "Minimum"
+    colnames(table.summary)[11] = "Maximum"
     assign("table.summary", table.summary, envir = .GlobalEnv)
+    print(table.summary)
 }
 
 #==============================================================================
 # Output
 #==============================================================================
 my.summary(mtcars)
-table.summary
 ```
 
 ```{r FIN}
