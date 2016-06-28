@@ -1,0 +1,331 @@
+---
+title: "Predict 454: Data Manipulation in R"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+Workspace cleanup and prep:
+
+```{r setup.R, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+## Data Manipulation in R
+
+Using the data file `AmesHousing_wHeader.txt`, perform the following data exercises.
+
+0. Read this data file in. What kind of data file is it? What `R` function should we use to read in this data file? Do we need to specify any special options?
+    
+    \ 
+    
+```{r Ex0, indent = "    "}
+# Read data
+ames = read.table("~/AmesHousing.txt", header = T, sep = "\t")
+```
+    
+    \ 
+    
+    __Comments__: The data file is a tab-delimited text file. The `R` function `read.table()` can be used to read the data in. We want to specify the `header` parameter to `TRUE` and the `sep` parameter for tab-delimeted.
+    
+    \ 
+    
+1. Compute the number of missing values for the field `Alley` and show the distribution of the values for `Alley`, including the missing values.
+    
+    \ 
+    
+```{r Ex1, indent = "    "}
+# Summary stats
+summary(ames$Alley)
+```
+    
+    \ 
+    
+2. Display the distribution of the values for the field `Fence`. Include the missing values and perform a count check to ensure that you have all of the data.
+    
+    \ 
+    
+```{r Ex2, indent = "    "}
+# Summary stats
+summary(ames$Fence)
+```
+    
+    \ 
+    
+3. Create a `data.frame` containing the fields `SID`, `PID`, `LotArea`, and `Fence`. What is the size of this `data.frame`? Subset this `data.frame` to contain only observations (rows) that have all values _not equal_ to `NA`. Is there more than one way to do this last task?
+    
+    \ 
+    
+```{r Ex3, indent = "    "}
+# Subset data.frame(ames)
+ames.sub = data.frame(ames$SID, ames$PID, ames$LotArea, ames$Fence)
+
+# View size
+dim(ames.sub)
+
+# Sum of 'NA' values in data.frame(ames.sub) by variable
+colSums(is.na(ames.sub))
+
+# Create complete case version of data.frame(ames.sub)
+ames.sub.cc = ames.sub[complete.cases(ames.sub), ]
+
+# Alternate approach
+ames.sub.naom = na.omit(ames.sub)
+
+# Validate equality
+all(ames.sub.cc == ames.sub.naom)
+```
+    
+    \ 
+    
+    __Comments__: The `data.frame` with four variables has a dimension of `2930` observations (rows, or tuples) and `4` variables (columns, or attributes). The variable `Fence` contains `2358` values of `NA`. The `R` function `complete.cases()` was used to subset this `data.frame` to contain only observations that have all values _not equal_ to `NA`. There are multiple ways to do this. Another method could be to assign using `na.omit(ames.sub)`.
+    
+    \ 
+    
+4. Subset the `data.frame` of `SID`, `PID`, `LotArea`, and `Fence` to a data set that only contains observations that contain a `NA` value in some field.
+    
+    \ 
+    
+```{r Ex4, indent = "    "}
+# Create incomplete case version of data.frame(ames.sub)
+ames.sub.ic = ames.sub[!complete.cases(ames.sub), ]
+```
+    
+    \ 
+    
+5. Compute a histogram of `SalePrice`. Color the bars of the histogram grey and label the histogram appropriately. Now compute a histogram for the natural logarithm of the `SalePrice`. Color this histogram blue. And finally compute a histogram of the base 10 logarithm of the `SalePrice`. Color this last histogram green.
+    
+    \ 
+    
+```{r Ex5, indent = "    "}
+#--------------------------------------
+# Sale Price
+#--------------------------------------
+hist((ames$SalePrice/1000), col = "grey", 
+     main = "Histogram of ames$SalePrice", 
+     xlab = "000s of $")
+
+#--------------------------------------
+# Sale Price, natural log
+#--------------------------------------
+hist(log(ames$SalePrice/1000), col = "lightblue", 
+     main = "Histogram of ames$SalePrice \n Natural Log", 
+     xlab = "000s of $")
+
+#--------------------------------------
+# Sale Price, base 10 log
+#--------------------------------------
+hist(log10(ames$SalePrice/1000), col = "lightgreen", 
+     main = "Histogram of ames$SalePrice \n Base 10 Log", 
+     xlab = "000s of $")
+```
+    
+    \ 
+    
+6. Compute the average size of the field `GarageArea`. Are there any problems in performing this computation? How do we alleviate this problem? Are all of the values that populate `GarageArea` valid values? What is the sample mean of the valid values?
+    
+    \ 
+    
+```{r Ex6, indent = "    "}
+# Compute arithmetic mean
+mean(ames$GarageArea)
+
+# Summary stats
+summary(ames$GarageArea)
+
+# Compute arithmetic mean of valid values
+mean(na.omit(ames$GarageArea[ames$GarageArea != 0]))
+```
+    
+    \ 
+    
+    __Comments__: The field `GarageArea` contains one `NA` value, which results in the arithmetic mean returning a value of `NA`. 
+    
+    To answer the question of valid values, we must first understand the structure and intent of the field: 
+    
+    * Is it the case that `GarageArea == 0` means the property does not have a garage? 
+    * Is it the case that `GarageArea == NA` means the property does not have a garage?
+    * Is it the case that _either_ of the above are acceptable to mean the property does not have a garage?
+    
+    To calculate the arithmetic mean of valid values, we should probably exclude _both_ instances where `GarageArea == 0` _and_ `GarageArea == NA`. The reason for this is that the mean is highly sensitive to outliers or other extreme observations. A garage area of zero is not beneficial in answering the question, and thus, should be excluded _from the calculation_ as a valid value (whether or not it is a valid value _in the field_ is a different question).
+    
+    \ 
+    
+7. Compute the mean and median sale price by sale type. Do you know how to double check this computation?
+    
+    \ 
+    
+```{r Ex7, indent = "    "}
+#--------------------------------------
+# NA check
+#--------------------------------------
+# Validate no NA values
+sum(is.na(ames$SalePrice))
+sum(is.na(ames$SaleType))
+
+#--------------------------------------
+# Mean
+#--------------------------------------
+# Table
+aggregate(ames$SalePrice ~ ames$SaleType, FUN = mean)
+
+# Validate results
+sapply(split(ames$SalePrice, ames$SaleType), mean)
+
+#--------------------------------------
+# Median
+#--------------------------------------
+# Table
+aggregate(ames$SalePrice ~ ames$SaleType, FUN = median)
+
+# Validate results
+sapply(split(ames$SalePrice, ames$SaleType), median)
+```
+    
+    \ 
+    
+    __Comments__: There are a number of ways to conduct the calculation. The first step is to check for any `NA` values, or other values that might inappropriately distort the results. The first method produces a table of the results for easier reading using the `R` function `aggregate()`. The second method validates these results by using the `R` function `sapply()` combined with the `R` function `split()`. Another method to validate the computation is to calculate the arithmetic mean or median on a subset (using brackets) of a specific type.
+    
+    \ 
+    
+8. Compute the mean and median sale price per square foot by year sold. Create a data object that has the three columns [SaleType, Mean, Median]. What type of data object did you have to use? Why? Make a single barplot displaying both the mean and median side-by-side by sale type. Make the mean bar blue and the median bar red. What type of data type do you have to provide to the function barplot()?
+    
+    \ 
+    
+```{r Ex8, indent = "    "}
+#--------------------------------------
+# Sale price per square foot by year sold
+#--------------------------------------
+# View variables with NA values and frequency
+colSums(is.na(ames))[colSums(is.na(ames)) > 0]
+
+# Mean
+aggregate(ames$SalePrice/ames$GrLivArea ~ ames$YrSold, FUN = mean)
+
+# Median
+aggregate(ames$SalePrice/ames$GrLivArea ~ ames$YrSold, FUN = median)
+
+#--------------------------------------
+# Data Object
+#--------------------------------------
+# Create data.frame
+ames.do = data.frame(levels(ames$SaleType), 
+                     aggregate(ames$SalePrice ~ ames$SaleType, 
+                               FUN = mean)[, 2], 
+                     aggregate(ames$SalePrice ~ ames$SaleType, 
+                               FUN = median)[, 2])
+
+# Rename columns
+colnames(ames.do) = c("SaleType", "Mean", "Median")
+
+#--------------------------------------
+# Barplot: SaleType Mean, Median
+#--------------------------------------
+# Create matrix
+ames.bp = matrix(c(aggregate(ames$SalePrice/1000 ~ ames$SaleType, 
+                             FUN = mean)[, 2], 
+                   aggregate(ames$SalePrice/1000 ~ ames$SaleType, 
+                             FUN = median)[, 2]), 
+                 ncol = 2)
+
+# Name columns
+colnames(ames.bp) = c("Mean", "Median")
+
+# Create barplot
+barplot(t(ames.bp), beside = T, names.arg = levels(ames$SaleType),
+        col = c("blue", "red"), las = 2, cex.axis = 0.7, cex.names = 0.7, 
+        main = "Ames Housing: Sale Price by Sale Type", 
+        ylab = "Sale Price (000s of $)", xlab = "Sale Type")
+legend("topright", c("Mean", "Median"), col = c("blue", "red"), 
+       pch = 15)
+```
+    
+    \ 
+    
+    __Comments__: The created `R` data object is of class `data.frame`, and was used to allow a mix of variable types. For example, the `matrix` class does not allow a mix of `character` and `numeric` values (though numeric values stored as strings can be converted to numeric values). The `R` function `barplot()` will accept values from class `matrix` or `vector`. The mean and median values were assigned to a `matrix`.
+    
+    \ 
+    
+9. Sample the data frame to a random sample of 200 observations. Can we create a random sample of 200 observations with no missing values in any field?
+    
+    \ 
+    
+```{r Ex9, indent = "    "}
+# Draw random sample without replacement of size from rows
+set.seed(123)
+ames.samp = ames[sample(x = nrow(ames), size = 200, replace = F), ]
+
+# Create flag for NA values by observation
+for (i in 1:nrow(ames)){
+    ames$na = ifelse(sum(is.na(ames[i, ])) > 0, 1, 0)
+}
+rm(i)
+
+# See how many observations contain >= 1 NA value
+sum(ames$na)
+```
+    
+    \ 
+    
+    __Comments__: Momentarily ignoring our data at hand, we can randomly sample a subset of the sample population which contains no missing values in any field. However, this is no longer a true random sample, since we have introduced bias. Another way to think of this is not every observation has an equal chance of being drawn.
+    
+    Turning to our data, each observation contains at least one `NA` value, so we cannot randomly sample _any_ observations with no missing values in any field.
+    
+    \ 
+    
+10. Take a random sample of 200 observations from the raw text file without reading the whole text file into memory. Hint: Read the help file on read.table().
+    
+    \ 
+    
+```{r Ex10, indent = "    "}
+# Draw random sample without replacement of size from rows
+# Note: row.names = 1 only reads a single column
+set.seed(123)
+samp = sample(x = nrow(read.table("~/AmesHousing.txt", header = T, sep = "\t", 
+              row.names = 1)), size = 200, replace = F)
+
+# Draw from file
+temp = NULL
+for (i in samp){
+    temp = rbind(temp, read.table("~/AmesHousing.txt", header = F, sep = "\t", 
+                 nrows = 1, skip = i))
+}
+
+# Assign column names
+# Note: nrows = 1 only reads a single row
+colnames(temp) = colnames(read.table("~/AmesHousing.txt", header = T, 
+                          sep = "\t", nrows = 1))
+
+# Validate sampling did not select duplicate rows
+anyDuplicated(temp$SID)
+
+# Clean-up
+rm(samp); rm(i)
+```
+    
+    \ 
+    
+```{r Fin}
+# Session info
+sessionInfo()
+```
+
