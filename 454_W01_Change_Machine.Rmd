@@ -13,8 +13,8 @@ output:
 geometry: margin = 0.5in
 ---
 \
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include = F}
+knitr::opts_chunk$set(echo = T)
 ```
 
 # The Change Machine
