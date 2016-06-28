@@ -27,8 +27,8 @@ Write a R function named change.machine() that takes an input value between 0 an
 #==============================================================================
 change.machine = function(val){
     val = floor(val + 0.5)
-    validRange = seq(0, 100)
-    if (!val %in% validRange){
+    val.range = seq(0, 100)
+    if (!val %in% val.range){
         stop("The input value must be between 0 and 100.")
     }
     q = val %/% 25; q.rem = val %% 25
