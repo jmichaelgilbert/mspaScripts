@@ -1,0 +1,66 @@
+---
+title: "454_Summary_Function"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document: default
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# A Customized Summary Function
+
+Write a R function named my.summary() that will take a data frame of numeric variables and compute summary statistics for the variables. The summary statistics should be the quantiles (0.01,0.05,0.25,0.5,0.75,0.95,0.99), the mean, the variance, the min, and the max. The summary statistics should be output in a R data frame structure. 
+
+To make your function a little more advanced try to include the percent missing.
+
+Apply your function to the wine data set used in Assignment #1. Post an example function call, your function output, and your function.
+
+```{r Summary}
+#==============================================================================
+# Function
+#==============================================================================
+my.summary = function(df){
+    table.summary = data.frame()
+    cn = colnames(df[, !sapply(df, is.factor)])
+    for (num.var in cn){
+        qt = quantile(df[, num.var], na.rm = T, 
+                      probs = c(0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99))
+        mu = mean(df[, num.var], na.rm = T)
+        vr = var(df[, num.var], na.rm = T)
+        mn = min(df[, num.var], na.rm = T)
+        mx = max(df[, num.var], na.rm = T)
+        pm = (sum(is.na(df[, num.var])) / length(df[, num.var])) * 100
+        table.row = as.data.frame(cbind(num.var,
+                                  round(cbind(t(qt), mu, vr, mn, mx, pm), 
+                                  digits = 2)))
+        table.summary = rbind(table.summary, table.row)
+    }
+    rownames(table.summary) = table.summary[, 1]
+    table.summary = subset(table.summary, select = (-num.var))
+    colnames(table.summary)[8:12] = c("Mean", "Variance", "Minimum", 
+                                      "Maximum", "Percent Missing")
+    assign("table.summary", table.summary, envir = .GlobalEnv)
+    print(table.summary)
+}
+
+#==============================================================================
+# Output
+#==============================================================================
+my.summary(mtcars)
+```
+
+```{r FIN}
+# Session Info
+sessionInfo()
+```
+
