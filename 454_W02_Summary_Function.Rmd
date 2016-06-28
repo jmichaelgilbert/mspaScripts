@@ -52,7 +52,7 @@ my.summary = function(df, na.rm = T){
     colnames(table.summary)[12] = "Maximum"
     colnames(table.summary)[13] = "Percent Missing"
     assign("table.summary", table.summary, envir = .GlobalEnv)
-    print(table.summary)
+    return(table.summary)
 }
 
 #==============================================================================
