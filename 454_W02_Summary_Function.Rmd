@@ -45,13 +45,12 @@ my.summary = function(df, na.rm = T){
                                   digits = 2)))
         table.summary = rbind(table.summary, table.row)
     }
-    rownames(table.summary) = table.summary[, 1]
-    table.summary = subset(table.summary, select = (-num.var))
-    colnames(table.summary)[8] = "Mean"
-    colnames(table.summary)[9] = "Variance"
-    colnames(table.summary)[10] = "Minimum"
-    colnames(table.summary)[11] = "Maximum"
-    colnames(table.summary)[12] = "Percent Missing"
+    colnames(table.summary)[1] = "Variable"
+    colnames(table.summary)[9] = "Mean"
+    colnames(table.summary)[10] = "Variance"
+    colnames(table.summary)[11] = "Minimum"
+    colnames(table.summary)[12] = "Maximum"
+    colnames(table.summary)[13] = "Percent Missing"
     assign("table.summary", table.summary, envir = .GlobalEnv)
     print(table.summary)
 }
