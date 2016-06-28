@@ -13,8 +13,8 @@ output:
 geometry: margin = 0.5in
 ---
 \
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include = F}
+knitr::opts_chunk$set(echo = T)
 ```
 
 # A Customized Summary Function
@@ -29,17 +29,17 @@ Apply your function to the wine data set used in Assignment #1. Post an example 
 #==============================================================================
 # Function
 #==============================================================================
-my.summary = function(df){
+my.summary = function(df, na.rm = T){
     table.summary = data.frame()
     cn = colnames(df[, !sapply(df, is.factor)])
     for (num.var in cn){
-        qt = quantile(df[, num.var], na.rm = T, 
+        qt = quantile(df[, num.var], na.rm = na.rm, 
                       probs = c(0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99))
-        mu = mean(df[, num.var], na.rm = T)
-        vr = var(df[, num.var], na.rm = T)
-        mn = min(df[, num.var], na.rm = T)
-        mx = max(df[, num.var], na.rm = T)
-        pm = (sum(is.na(df[, num.var])) / length(df[, num.var])) * 100
+        mu = mean(df[, num.var], na.rm = na.rm)
+        vr = var(df[, num.var], na.rm = na.rm)
+        mn = min(df[, num.var], na.rm = na.rm)
+        mx = max(df[, num.var], na.rm = na.rm)
+        pm = mean(is.na(df[, num.var])) * 100
         table.row = as.data.frame(cbind(num.var,
                                   round(cbind(t(qt), mu, vr, mn, mx, pm), 
                                   digits = 2)))
@@ -47,8 +47,11 @@ my.summary = function(df){
     }
     rownames(table.summary) = table.summary[, 1]
     table.summary = subset(table.summary, select = (-num.var))
-    colnames(table.summary)[8:12] = c("Mean", "Variance", "Minimum", 
-                                      "Maximum", "Percent Missing")
+    colnames(table.summary)[8] = "Mean"
+    colnames(table.summary)[9] = "Variance"
+    colnames(table.summary)[10] = "Minimum"
+    colnames(table.summary)[11] = "Maximum"
+    colnames(table.summary)[12] = "Percent Missing"
     assign("table.summary", table.summary, envir = .GlobalEnv)
     print(table.summary)
 }
