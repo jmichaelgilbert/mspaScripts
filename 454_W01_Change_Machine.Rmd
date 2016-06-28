@@ -37,7 +37,7 @@ change.machine = function(val){
     p = n.rem %/% 1
     assign("change", list(Quarters = q, Dimes = d, Nickels = n, Pennies = p), 
            envir = .GlobalEnv)
-    print(change)
+    return(change)
 }
 
 #==============================================================================
