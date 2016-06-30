@@ -27,6 +27,25 @@ Apply your function to the wine data set used in Assignment #1. Post an example 
 
 ```{r Summary}
 #==============================================================================
+# Data Import
+#==============================================================================
+# Read data
+wine = read.csv("~/wine.data", header = F)
+
+# Assign column names
+colnames(wine) = c("Class", "Alcohol", "Malic_Acid", "Ash", "Ash_Alcalinity", 
+                   "Magnesium", "Phenols_Total", "Flavanoids", 
+                   "Phenols_Nonflavanoid", "Proanthocyanins", 
+                   "Color_Intensity", "Hue", "OD280_OD315", "Proline")
+
+# Assign wine$class as factor
+wine$Class = as.factor(wine$Class)
+
+# Convert integers to numeric
+wine$Magnesium = as.numeric(wine$Magnesium)
+wine$Proline = as.numeric(wine$Proline)
+
+#==============================================================================
 # Function
 #==============================================================================
 my.summary = function(df, na.rm = T){
@@ -55,9 +74,9 @@ my.summary = function(df, na.rm = T){
 }
 
 #==============================================================================
-# Output
+# Function Call
 #==============================================================================
-my.summary(mtcars)
+my.summary(wine)
 ```
 
 ```{r FIN}
