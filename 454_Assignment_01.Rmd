@@ -1,0 +1,410 @@
+---
+title: "454_Assignment_01"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document: default
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+```{r setup.R, include = F, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(corrplot)
+library(lattice)
+library(MASS)
+library(pander)
+library(rattle)
+library(rpart)
+```
+
+```{r setup.knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+knitr::opts_knit$set(global.par = T)
+```
+
+```{r Functions, include = F}
+#--------------------------------------
+# Quantile Function
+#--------------------------------------
+quantiles = function(df, na.rm = T){
+    temp = data.frame()
+    cn = colnames(df[, !sapply(df, is.factor)])
+    for (num.var in cn){
+        qt = quantile(df[, num.var], na.rm = na.rm,
+                      probs = c(0.01, 0.05, 0.25, 0.50, 0.75, 0.95, 0.99))
+        table.row = as.data.frame(cbind(num.var, 
+                                  round(cbind(t(qt)), digits = 2)))
+        temp = rbind(temp, table.row)
+    }
+    colnames(temp)[1] = "Variable"
+    return(temp)
+}
+```
+
+## Introduction
+
+The purpose of this report is to assess data quality, conduct exploratory data analysis, and construct Naive models based on the exploratory data analysis for the `Wine` data set. Both the data set and metadata (names) file are available for download [here](http://archive.ics.uci.edu/ml/datasets/Wine).
+
+This report contains three sections:
+
+1. Data Quality Check
+2. Exploratory Data Analysis
+3. Model Based Exploratory Data Analysis
+
+An appendix of relevant `R` code used in producing the report is included. The code is grouped by the same three sections.
+
+```{r DIP1, include = F}
+#==============================================================================
+# Data Import & Prep
+#==============================================================================
+# Read data
+wine = read.csv("~/wine.data", header = F)
+
+# Assign column names
+colnames(wine) = c("Class", "Alcohol", "Malic_Acid", "Ash", "Ash_Alcalinity", 
+                   "Magnesium", "Phenols_Total", "Flavanoids", 
+                   "Phenols_Nonflavanoid", "Proanthocyanins", 
+                   "Color_Intensity", "Hue", "OD280_OD315", "Proline")
+
+# Check variable classes
+sapply(wine, class)
+
+# Recode wine$class as factor
+wine$Class = as.factor(wine$Class)
+
+# Recode integers to numeric
+wine$Magnesium = as.numeric(wine$Magnesium)
+wine$Proline = as.numeric(wine$Proline)
+
+# Assign numeric column names
+cn.num = colnames(wine[, !sapply(wine, is.factor)])
+```
+
+## Data Quality Check
+
+From the `Wine` metadata file, the response variable is the class identifier, `Class`. The response variable is a categorical or factor variable, with classes 1, 2, and 3. Each class corresponds to a different cultivar of wine. Other variables (or attributes) reflect different constituents found in each type of wine. The values of those variables are the results (quantities) of a chemical analysis for each observation. 
+
+The dimensions of the `Wine` data set indicate there are `178` observations and `14` variables, including the response variable `Class`. The variable `Class` was recoded from `integer()` to `factor()`, while the variables `Magnesium` and `Proline` were recoded from `integer()` to `numeric()`. __Table 1__ below shows the class of each variable after recoding. Typically, a brief description or definition of each variable would also be included, but this was not provided by the data dictionary and is excluded here, rather than asserting hypothesized definitions as factual definitions. 
+
+\begin{center}
+Table 1: Variable Classes in Wine Data Set
+\end{center}
+
+```{r DQC.1, echo = F}
+pander(t(as.data.frame(lapply(wine, class))), justify = "left")
+```
+
+__Table 2__ below shows summary statistics for each variable in the `Wine` data set. These are across all classes in the response variable. The _Exploratory Data Analysis_ section looks for interesting relationships by each class. 
+
+\pagebreak
+
+\begin{center}
+Table 2: Summary Statistics of `Wine` Variables
+\end{center}
+
+```{r DQC.2, echo = F}
+pander(summary(wine[1:5]), caption = "", justify = "left")
+pander(summary(wine[6:9]), caption = "", justify = "left")
+pander(summary(wine[10:14]), caption = "", justify = "left")
+```
+
+Another part of the data quality check is to check for missing values and potential outliers. In `R`, missing values are coded as `NA`. There is a practical difference between a `NA` value and a `NULL` value, though `R` does not make this distinction. That said, it is valuable to understand which values are `NA` and which values are `NULL` in the data set, despite `R` coding both as `NA`.
+
+There do not appear to be any `NA` values in the `Wine` data set. For the most part, `R` will detect `NA` values and assign them as such. However, if other characters are used to denote `NA` values (e.g. the `?` character), `R` may not detect them. Part of the data quality check includes examining the data set for such occurrences. Counts of `NA` values either identified by `R` or manually coded, would be included in the output from the `summary()` function (such as in __Table 2__ above). 
+
+Detecting potential outliers begs the question of what constitutes an outlier. There is no single definition for an outlier, and at times the term outlier might be substituted for another term altogether (e.g. extreme observation). A simple definition can be found in _Introduction to Linear Regression Analysis_ by Montgomery, Peck, and Vining (5th Edition, p. 43): "_Outliers are observations that differ considerably from the rest of the data_." Detecting potential outliers is important, because they can exert leverage or influence, affect model results - during validation or deployment.
+
+One quantitative method to detect potential outliers for `numeric` variables is to examine the distribution of values for a given variable at the 1st, 5th, 10th, 25th, 50th, 75th, 90th, 95th, and 99th percentiles. Do these values stay relatively the same, or is there a "jump" in the values at the outer percentiles? __Table 3__ below contains the values of `Wine` variables at these percentiles.
+
+\begin{center}
+Table 3: Select Percentile Values of `Wine` Variables
+\end{center}
+
+```{r DQC.3, echo = F}
+pander(quantiles(wine), caption = "", justify = "left")
+```
+
+Qualitative methods to detect potential outliers include creating _boxplots_, _density plots_, or _histograms_. These plots should not be interpreted blindly! For instance, observations beyond the whiskers of a boxplot are not necessarily outliers - in `R`, the default setting is to draw the whiskers at 1.5 times the interquartile range (25th to 75th percentiles) from the box. Histograms may be useful, but interpretation can vary depending on the number of bins used. Alternatively, histograms can be plotted using bins of equally spaced probabilities - the widths of the bins vary, but the area represented by each bin is the same.
+
+From __Table 3__ above, the `Proline` variable looks to contain a potential outlier at the 99th percentile. A boxplot and histogram of `Proline` are shown in __Figure 1__ and __Figure 2__ below.
+
+\begin{center}
+Figure 1: Boxplot of `Proline`
+\end{center}
+
+```{r DQC.4, echo = F, out.width = "0.55\\linewidth"}
+settings = list(box.rectangle = list(col = "black", fill = "beige"), 
+                box.umbrella = list(col = "black"),
+                plot.symbol = list(col = "black"))
+bwplot(~ Proline, data = wine, par.settings = settings)
+rm(settings)
+```
+
+\begin{center}
+Figure 2: Histogram of `Proline`
+\end{center}
+
+```{r DQC.5, echo = F, out.width = "0.55\\linewidth"}
+histogram(~ Proline, data = wine, col = "beige")
+```
+
+Though the tail of `Proline` is skewed rightward, it does not appear to contain potential outliers.
+
+The _Data Quality Check_ should also look for invalid values. For `numeric` variables, this might be values which are negative in a variable where they should only be positive. For `factor` or `categorical` variables, this could be a miscoded level - examining the frequency of values at each level can be done quantitatively with counts, or qualitatively with barplots. 
+
+Whether checking for missing values, potential outliers, or invalid values, be mindful of sentinel values, or values that are used as an indicator for some meaning or status. For example: an `AGE` of `-1` could mean `Unknown`, while a `HOME_VALUE` of `0` could mean `Renter`.
+
+## Exploratory Data Analysis
+
+After the initial data quality check, data are further examined to identify interesting information or detect interesting relationships. That process is known as Exploratory Data Analysis or EDA. 
+
+The type of EDA conducted depends on the statistical problem at hand: is it one of `regression`, or one of `classification`? The statistical problem faced with the `Wine` data set is one of `classification`. 
+
+The response variable, `Class`, takes on three possible classes: `1`, `2`, or `3`. The appropriate EDA in this situation centers on interesting information or relationships by each of these classes, through both quantitative and qualitative means.
+
+It is also important to understand what might _not_ be useful. Scatterplots are not useful. However, boxplots and histograms can be useful, as can summary statistics by class, and correlations of variables by class. The correlations by class can show interesting relationships (and how they vary) by each class, and also variables that may cause multicollinearity.
+
+To conserve space, summary statistics by class are not included here, but can be produced using the code included in the _Appendix_. Select graphics are included below. 
+
+__Figure 3__ is a histogram of the variable `OD280_OD315`, which shows a different distribution by class. __Figure 4__ is a boxplot of the variable `Phenols_Nonflavanoid`, and also shows a different distribution by class.
+
+\begin{center}
+Figure 3: Histogram of `OD280\_OD315`
+\end{center}
+
+```{r EDA.1, echo = F, out.width = "0.55\\linewidth"}
+histogram(~ OD280_OD315 | Class, data = wine, 
+          layout = c(3, 1), col = "beige")
+```
+
+\begin{center}
+Figure 4: Boxplot of `Phenols\_Nonflavanoid``OD280\_OD315`
+\end{center}
+
+```{r EDA.2, echo = F, out.width = "0.55\\linewidth"}
+settings = list(box.rectangle = list(col = "black", fill = "beige"), 
+                box.umbrella = list(col = "black"),
+                plot.symbol = list(col = "black"))
+bwplot(~ Phenols_Nonflavanoid | Class, data = wine, 
+       layout = c(3, 1), par.settings = settings)
+rm(settings)
+```
+
+To look for other interesting relationships, correlation plots were created for each class in the response variable. Figure 5, 6, and 7 are correlation plots for each class.
+
+__Figure 5__ below looks at the response variable where `Class = 1`. Here, strong positive correlations are seen between `Flavanoids` and `Phenols_Total`, as well as `Flavanoids` and `Color_Intenstiy`. Slightly weaker positive correlations are seen between `Color_Intensity` and `Phenols_Total`, and `Color_Intensity` and `Proline`. 
+
+\begin{center}
+Figure 5: Correlation Plot of `Class = 1`
+\end{center}
+
+```{r EDA.3, echo = F}
+corrplot(cor(wine[wine$Class == 1, cn.num]), 
+         tl.col = "black", tl.cex = 0.8, tl.srt = 45)
+```
+
+__Figure 6__ below looks at the response variable where `Class = 2`. Here, strong positive correlations are seen between `Ash` and `Ash_Alcalinity`, as well as `Flavanoids` and `Phenols_Total`.
+
+\begin{center}
+Figure 6: Correlation Plot of `Class = 2`
+\end{center}
+
+```{r EDA.4, echo = F}
+corrplot(cor(wine[wine$Class == 2, cn.num]), 
+         tl.col = "black", tl.cex = 0.8, tl.srt = 45)
+```
+
+__Figure 7__ below looks at the response variable where `Class = 3`. Here, `Flavanoids` is strongly negatively correlated with `Phenols_Nonflavanoid`. Stronger positive correlation is seen between `Phenols_Total` and `Proanthocyanins`, as well as `Color_Intensity` and `Proanthocyanins`.
+
+\begin{center}
+Figure 7: Correlation Plot of `Class = 3`
+\end{center}
+
+```{r EDA.5, echo = F}
+corrplot(cor(wine[wine$Class == 3, cn.num]), 
+         tl.col = "black", tl.cex = 0.8, tl.srt = 45)
+```
+
+Finally, __Figure 8__ is a tree plot. The tree plot was constructed using all variables in the data set. Interesting information can still be revealed from this Naive model. In the tree plot below, each the color of each square corresponds to a class in the response variable. Within the square:
+
+* The first line refers to the class;
+* The second line is the percentage of rows by class (from left to right) within the node; and
+* The third line is the percentage of rows at the node, from the total rows in the data set.
+
+The first node is colored blue, because 40% of the rows in the `Wine` data set correspond to a `Class` of `2` (line 2). Looking at the second node, the tree splits on the `Proline` variable. Values greater than or equal to `755` branch to the left, and values less than `755` branch to the right. On the left, `Class 1` is the most prevelant, representing 85% of the population at this criterion (lines 1 and 2). In total, 38% of the `Wine` data set has a `Proline` value greater than or equal to `755` (line 3).
+
+\begin{center}
+Figure 8: Tree plot of `Wine` Data Set
+\end{center}
+
+```{r EDA.6, echo = F}
+fancyRpartPlot(rpart(wine$Class ~ ., data = wine), sub = "")
+```
+
+Even cursory EDA can provide valuable insight and information on the relationships within the data set. The relationships mentioned here can be leveraged in model construction, for instance the clear class separation in the variables `Phenols_Nonflavanoid` and `OD280_OD315` suggest these could be good predictor variables to include in a model. The correlation plots differ across classes, which could make it easier to build an accurate predictive model, and also provides information on potential collinear variables. Lastly, the tree model provides a subset of variables that could be used in model construction to build an accurate predictive model.
+
+## Model Based Exploratory Data Analysis
+
+Model based EDA is another way to glean information about the relationships in the data set. Naive models are used for this purpose, since the goal at this stage is not to build a highly accurate predictive model, but to uncover additional information. 
+
+A tree model can be very useful here. The tree model is excluded from this section, as results are discussed in the previous section, _Exploratory Data Analysis_.
+
+Two additional models were fit to the `Wine` data set. The first is a `LDA` model, and the second is a `PCA` model. Both can employ dimension reduction, which can be useful in qualitative plots. The plots can illustrate any separation in the data by class in the response - a good thing.
+
+The `LDA` model was fit to the response variable `Class` using all available predictor variables in the `Wine` data set. The resulting graphic is shown in __Figure 9__ below, which plots the two linear discriminants and illustrates clear class separation.
+
+\begin{center}
+Figure 9: Plot of Linear Discriminants for Naive `LDA` Model
+\end{center}
+
+```{r MBEDA.1, echo = F}
+#--------------------------------------
+# Linear Discriminant Analysis
+#--------------------------------------
+wine.lda.m1 = lda(Class ~ ., data = wine)
+plot(wine.lda.m1)
+```
+
+The `PCA` model was fit (with scaled variables) to the response variable `Class` using all available predictor variables in the `Wine` data set. The resulting biplot is shown in __Figure 10__ below, which plots the first two principal components. Though the function `biplot()` in `{stats}` results in a rather cluttered plot, class separation can still be seen. The benefit of this biplot is seeing the influence of the variable loadings on each principal component. For instance, both `Alcohol` and `Color_Intensity` are located away from other observations, but seem to have a large effect on the second principal component.
+
+\begin{center}
+Figure 10: Biplot for Naive `PCA` Model
+\end{center}
+
+```{r MBEDA.2, echo = F}
+#--------------------------------------
+# Principal Components Analysis
+#--------------------------------------
+wine$Class = as.numeric(wine$Class)
+wine.pcr.m1 = prcomp(wine, scale = T)
+biplot(wine.pcr.m1, xlabs = wine[, "Class"])
+wine$Class = as.factor(wine$Class)
+```
+
+Between the `LDA` and `PCA` models, the `LDA` model shows cleaner class separation. This is to be expected since `LDA` takes class information into account.
+
+\pagebreak
+
+## Appendix - Relevant R Code
+
+```{r Appendix, eval = F}
+#==============================================================================
+# Data Import & Prep
+#==============================================================================
+# Read data
+wine = read.csv("~/wine.data", header = F)
+
+# Assign column names
+colnames(wine) = c("Class", "Alcohol", "Malic_Acid", "Ash", "Ash_Alcalinity", 
+                   "Magnesium", "Phenols_Total", "Flavanoids", 
+                   "Phenols_Nonflavanoid", "Proanthocyanins", 
+                   "Color_Intensity", "Hue", "OD280_OD315", "Proline")
+
+# Check variable classes
+sapply(wine, class)
+
+# Recode wine$class as factor
+wine$Class = as.factor(wine$Class)
+
+# Recode integers to numeric
+wine$Magnesium = as.numeric(wine$Magnesium)
+wine$Proline = as.numeric(wine$Proline)
+
+# Assign numeric column names
+cn.num = colnames(wine[, !sapply(wine, is.factor)])
+
+#==============================================================================
+# Data Quality Check
+#==============================================================================
+# Dimensions
+dim(wine)
+
+# Check head
+head(wine)
+
+# Summary statistics
+summary(wine)
+
+#==============================================================================
+# Exploratory Data Analysis
+#==============================================================================
+# Summary statistics by class
+by(wine, wine$Class, summary)
+
+#--------------------------------------
+# Histograms by class
+#--------------------------------------
+for (var in cn.num){
+    temp = histogram(~ wine[, var] | wine[, "Class"], 
+                     data = wine, layout = c(3, 1), col = "beige", 
+                     xlab = paste(var))
+    print(temp)
+    rm(temp); rm(var)
+}
+
+#--------------------------------------
+# Boxplots by class
+#--------------------------------------
+for (var in cn.num){
+    settings = list(box.rectangle = list(col = "black", fill = "beige"), 
+                    box.umbrella = list(col = "black"),
+                    plot.symbol = list(col = "black"))
+    temp = bwplot(~ wine[, var] | wine[, "Class"], 
+                  data = wine, layout = c(3, 1), par.settings = settings, 
+                  xlab = paste(var))
+    print(temp)
+    rm(settings); rm(temp); rm(var)
+}
+
+#--------------------------------------
+# Correlation by class
+#--------------------------------------
+for (lvl in unique(wine$Class)){
+    corrplot(cor(wine[wine$Class == lvl, cn.num]), 
+             tl.col = "black", tl.cex = 0.8, tl.srt = 45)
+    rm(lvl)
+}
+
+#--------------------------------------
+# Decision tree
+#--------------------------------------
+fancyRpartPlot(rpart(wine$Class ~ ., data = wine), sub = "")
+
+#==============================================================================
+# Model Based Exploratory Data Analysis
+#==============================================================================
+
+#--------------------------------------
+# Linear Discriminant Analysis
+#--------------------------------------
+wine.lda.m1 = lda(Class ~ ., data = wine)
+plot(wine.lda.m1)
+
+#--------------------------------------
+# Principal Components Analysis
+#--------------------------------------
+wine$Class = as.numeric(wine$Class)
+wine.pcr.m1 = prcomp(wine, scale = T)
+biplot(wine.pcr.m1, xlabs = wine[, "Class"])
+wine$Class = as.factor(wine$Class)
+```
+
+```{r FIN, echo = F}
+# FIN
+sessionInfo()
+```
