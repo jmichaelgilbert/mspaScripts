@@ -33,7 +33,7 @@ knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
 # Set all figures to be centered
 knitr::opts_chunk$set(fig.align = "center")
 
-# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+# Set and preserve par(mfcol()) between chunks (calls to it can be hidden)
 knitr::opts_knit$set(global.par = T)
 ```
 
@@ -690,7 +690,7 @@ table(ex10.km4$cluster, c(rep(1, 20), rep(2, 20), rep(3, 20)))
     
     \ 
     
-(f) Now perform _K_-means clustering with _K_ = 3 on the first two principal component score vectors, rather than on the raw data. That is, perform _K_-means clustering on the 60 × 2 matrix of which the first column is the first principal component score vector, and the second column is the second principal component score vector. Comment on the results.
+(f) Now perform _K_-means clustering with _K_ = 3 on the first two principal component score vectors, rather than on the raw data. That is, perform _K_-means clustering on the 60 Ã— 2 matrix of which the first column is the first principal component score vector, and the second column is the second principal component score vector. Comment on the results.
     
     \ 
     
