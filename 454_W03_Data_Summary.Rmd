@@ -1,0 +1,84 @@
+---
+title: "454_Data_Summary"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document: default
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+geometry: margin = 0.5in
+---
+\
+```{r setup, include = F}
+knitr::opts_chunk$set(c(echo = T, warning = F, results = "hold"))
+```
+
+# Data Summary
+
+This R Programming Challenge is more of a data manipulation exercise than a programming exercise. Here we will use a data file of daily stock prices and volume to exercise some basic needed data skills on the R data frame.
+
+Here are the data exercises:
+
+(1) Read in the data file and check the 'structure' of the data. Is the variable `Date` a factor, string, or date? What data type should it be?
+
+```{r DS.1, indent = "    "}
+# Read data
+jpm = read.csv("~/JPM.csv", header = T)
+
+# Check date class
+class(jpm$Date)
+```
+
+    `Date` is read as a `factor` variable by `R`.
+
+(2) Type cast the variable Date into an R date type named TradeDate. Make sure that TradeDate is attached to your data frame.
+
+```{r DS.2, indent = "    "}
+jpm$TradeDate = as.Date(jpm$Date, format = "%d-%b-%y")
+```
+
+(3) Create a seven character Year-Month string named `YearMonth`. Make sure that `YearMonth` is attached to your data frame.
+
+```{r DS.3, indent = "    "}
+jpm$YearMonth = substr(jpm$TradeDate, 1, 7)
+```
+
+(4) Compute the total trading volume for each YearMonth.
+
+```{r DS.4, indent = "    "}
+round(by(jpm$Volume, jpm$YearMonth, sum), digits = 2)
+```
+
+(5) Compute the average closing price for each YearMonth.
+
+```{r DS.5, indent = "    "}
+round(by(jpm$Close, jpm$YearMonth, mean), digits = 2)
+```
+
+(6) Compute the average daily intraday price spread for each YearMonth. Note that this intraday price spread is computed by the daily high minus the daily low.
+
+```{r DS.6, indent = "    "}
+jpm$IDPS = (jpm$High - jpm$Low)
+round(by(jpm$IDPS, jpm$YearMonth, mean), digits = 2)
+```
+
+(7) Use {base} `R` graphics to make this plot.
+
+```{r DS.7, indent = "    "}
+boxplot(jpm$IDPS ~ jpm$YearMonth, las = 2, 
+        main = "Boxplots of Intraday Price Spread")
+```
+
+(8) Use {base} `R` graphics to make this plot.
+
+```{r DS.8, indent = "    "}
+bp = barplot(by(jpm$Close, jpm$YearMonth, mean), las = 2, 
+             main = "Average Closing Price",
+             ylim = c(0, 80))
+abline(h = mean(jpm$Close), col = "blue", lty = 5)
+rm(bp)
+```
