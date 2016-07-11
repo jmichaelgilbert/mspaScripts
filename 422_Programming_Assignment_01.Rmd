@@ -27,7 +27,7 @@ knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
 # Set all figures to be centered
 knitr::opts_chunk$set(fig.align = "center")
 
-# Set and perserve par(mfcol()) between chunks (calls to it can be hidden)
+# Set and preserve par(mfcol()) between chunks (calls to it can be hidden)
 knitr::opts_knit$set(global.par = T)
 ```
 
