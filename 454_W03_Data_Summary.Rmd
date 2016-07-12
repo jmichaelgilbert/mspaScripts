@@ -3,18 +3,20 @@ title: "454_Data_Summary"
 author: "Michael Gilbert"
 date: '`r format(Sys.time(), "%d %B, %Y")`'
 output:
-  pdf_document: default
   html_document:
     fig_caption: yes
     fig_crop: no
     fig_height: 4.75
     fig_width: 5.75
     highlight: tango
+  pdf_document: default
 geometry: margin = 0.5in
 ---
 \
 ```{r setup, include = F}
-knitr::opts_chunk$set(c(echo = T, warning = F, results = "hold"))
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(warning = F) 
+knitr::opts_chunk$set(results = "hold")
 ```
 
 # Data Summary
