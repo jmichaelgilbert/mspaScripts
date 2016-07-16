@@ -187,6 +187,7 @@ num.plots <- function(data, list, norm = F, vs = F){
 #--------------------------------------
 # num.freq()
 #--------------------------------------
+# Summary statistics split by named factor for numeric variables
 num.freq <- function(data, list){
     temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
     for (var in list){
@@ -307,7 +308,7 @@ fac.mosaic <- function(data, list){
 #--------------------------------------
 # fac.freq()
 #--------------------------------------
-# Function to display frequencies of factor variables
+# Frequency of occurence split by named factor for factor variables
 fac.freq <- function(data, list, cat = F){
     temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
     for (var in list){
