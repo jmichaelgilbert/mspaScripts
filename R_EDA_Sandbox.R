@@ -1,6 +1,6 @@
 ###############################################################################
 # R_EDA_Sandbox.R
-# Last updated: 2016-05-12 by MJG
+# Last updated: 2016-07-16 by MJG
 ###############################################################################
 
 # A compilation of useful functions to [ideally] deploy on any data set
@@ -15,10 +15,6 @@
 #   Trims
 #   Transforms
 
-# TODO:
-# Adapt code equivalent to PROC MI in SAS to data set *or* create impute code 
-#   based on mean, median, mode of the variable
-
 # **See 'Bonus: Demo' at end of code**
 
 #==============================================================================
@@ -28,26 +24,26 @@
 # These commands must be adapted to the data set, they **cannot** be run blind!
 
 # Store data set name for use in titles, etc. later
-data.name <- "df$"
+data.name = "df$"
 
 # Set response variable
-data.response <- "var"
+data.response = "var"
 
 # Assign rownames
-df.rn <- as.numeric(rownames(df))
+df.rn = as.numeric(rownames(df))
 
 # Assign full column names
-df.cn.all <- colnames(df)
+df.cn.all = colnames(df)
 
 # Assign numeric column names
-df.cn.num <- colnames(df[, !sapply(df, is.factor)])
+df.cn.num = colnames(df[, !sapply(df, is.factor)])
 
 # Assign factor column names
-df.cn.fac <- colnames(df[, sapply(df, is.factor)])
+df.cn.fac = colnames(df[, sapply(df, is.factor)])
 
 # Assign column names *except* for missing flag variables
 # This is necessary due to order of deployment
-df.cn.all <- grep("^[MF_]", colnames(df), value = T, invert = T)
+df.cn.all = grep("^[MF_]", colnames(df), value = T, invert = T)
 
 #==============================================================================
 # Accuracy
@@ -59,7 +55,7 @@ df.cn.all <- grep("^[MF_]", colnames(df), value = T, invert = T)
 # Function to add MSE to other measures from forecast::accuracy
 fit <- function(f, x){
     require(forecast)
-	temp <- data.frame(forecast::accuracy(f, x), 
+    temp <- data.frame(forecast::accuracy(f, x), 
                        forecast::accuracy(f, x)[, 2]^2)
     temp <- temp[, -c(1)]
     colnames(temp)[6] <- "MSE"
@@ -75,14 +71,14 @@ fit <- function(f, x){
 # miss.flag()
 #--------------------------------------
 # Function to create indicator variables as missing flags
-miss.flag <- function(data, list){
+miss.flag <- function(df, list){
     for (var in list){
-        if (sum(is.na(data[, var])) > 0){
-            data[paste("MF", var, sep = "_")] <- 
-                ifelse(is.na(data[, var]), 1, 0)
+        if (sum(is.na(df[, var])) > 0){
+            df[paste("MF", var, sep = "_")] <- 
+                ifelse(is.na(df[, var]), 1, 0)
         }
     }
-    return(data)
+    return(df)
 }
 
 #==============================================================================
@@ -97,19 +93,18 @@ miss.flag <- function(data, list){
 # num.boxplot()
 #--------------------------------------
 # Function to create boxplots of numeric variables
-num.boxplot <- function(data, list, vs = F){
-    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
-    for (var in list){
+num.boxplot = function(df, list, var, vs = F){
+    for (num in list){
         if (vs){
-            boxplot(data[, var] ~ temp, col = "grey",
-                    main = paste(data.name, var," versus ",
-                                 data.name, data.response, sep = ""),
+            boxplot(df[, num] ~ df[, var], col = "grey",
+                    main = paste(data.name, num," versus ",
+                                 data.name, var, sep = ""),
                     ylab = "Values")
         }
         if (!vs){
-            boxplot(data[, var], col = "grey",
-                    main = paste("Boxplot of ", data.name, var, sep = ""),
-                    xlab = paste(data.name, var, sep = ""),
+            boxplot(df[, num], col = "grey",
+                    main = paste("Boxplot of ", data.name, num, sep = ""),
+                    xlab = paste(data.name, num, sep = ""),
                     ylab = "Values")
         }
     }
@@ -120,18 +115,18 @@ num.boxplot <- function(data, list, vs = F){
 #--------------------------------------
 # Function to create histograms of numeric variables
 # Optional choice of normal curve overlay
-num.hist <- function(data, list, norm = F){
-    for (var in list){
-        main <- paste("Histogram of ", data.name, var, sep = "")
-        sub <- ifelse(norm, "normal curve overlay (blue)", "")
-        y <- hist(data[, var], plot = F)
-        h <- hist(data[, var], col = "grey", main = main, sub = sub,
-                  ylim = c(0, 1.1*max(y$counts)),
-                  xlab = paste(data.name, var, sep = ""))
+num.hist = function(df, list, norm = F){
+    for (num in list){
+        main = paste("Histogram of ", data.name, num, sep = "")
+        sub = ifelse(norm, "normal curve overlay (blue)", "")
+        y = hist(df[, num], plot = F)
+        h = hist(df[, num], col = "grey", main = main, sub = sub,
+                 ylim = c(0, 1.1*max(y$counts)),
+                 xlab = paste(data.name, num, sep = ""))
         if (norm){
-            xfit <- seq(min(data[, var]), max(data[, var]), length = 100)
-            yfit <- dnorm(xfit, mean = mean(data[, var]), sd = sd(data[, var]))
-            yfit <- yfit * diff(h$mids[1:2]) * length(data[, var])
+            xfit = seq(min(df[, num]), max(df[, num]), length = 100)
+            yfit = dnorm(xfit, mean = mean(df[, num]), sd = sd(df[, num]))
+            yfit = yfit * diff(h$mids[1:2]) * length(df[, num])
             lines(xfit, yfit, col = "blue", lwd = 2)
         }
     }
@@ -141,11 +136,11 @@ num.hist <- function(data, list, norm = F){
 # num.qq()
 #--------------------------------------
 # Function to create Q-Q plots of numeric variables
-num.qq <- function(data, list){
-    for (var in list){
-        qqnorm(data[, var], pch = 21, bg = "grey",
-               main = paste("Normal Q-Q Plot of ", data.name, var, sep = ""))
-        qqline(data[, var], lwd = 2, col = "blue")
+num.qq = function(df, list){
+    for (num in list){
+        qqnorm(df[, num], pch = 21, bg = "grey",
+               main = paste("Normal Q-Q Plot of ", data.name, num, sep = ""))
+        qqline(df[, num], lwd = 2, col = "blue")
     }
 }
 
@@ -153,14 +148,13 @@ num.qq <- function(data, list){
 # num.scatter()
 #--------------------------------------
 # Function to create scatterplots of numeric variables
-num.scatter <- function(data, list){
-    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
-    for (var in list){
-        plot(data[, var], temp, pch = 21, bg = "grey",
-             main = paste(data.name, data.response," versus ", 
-                          data.name, var, sep = ""),
-             ylab = paste(data.name, data.response, sep = ""),
-             xlab = paste(data.name, var, sep = ""))
+num.scatter = function(df, list, var){
+    for (num in list){
+        plot(df[, num], df[, var], pch = 21, bg = "grey",
+             main = paste(data.name, var, " versus ", 
+                          data.name, num, sep = ""),
+             ylab = paste(data.name, var, sep = ""),
+             xlab = paste(data.name, num, sep = ""))
     }
 }
 
@@ -169,13 +163,13 @@ num.scatter <- function(data, list){
 #--------------------------------------
 # Function to produce four plots per variable:
 #   Scatterplot, Q-Q Plot, Histogram, Boxplot
-num.plots <- function(data, list, norm = F, vs = F){
+num.plots = function(df, list, var, norm = F, vs = F){
     par(mfcol = c(2, 2))
-    for (var in list){
-        num.hist(data, var, norm)
-        num.scatter(data, var)
-        num.boxplot(data, var, vs)
-        num.qq(data, var)
+    for (num in list){
+        num.hist(df, num, norm)
+        num.scatter(df, num, var)
+        num.boxplot(df, num, var, vs)
+        num.qq(df, num)
     }
     return(par(mfcol = c(1, 1)))
 }
@@ -188,21 +182,20 @@ num.plots <- function(data, list, norm = F, vs = F){
 # num.freq()
 #--------------------------------------
 # Summary statistics split by named factor for numeric variables
-num.freq <- function(data, list){
-    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
-    for (var in list){
-        name.var <- rep(paste(data.name, var, sep = ""),
-                        each = nlevels(temp))
-        name.split <- rep(paste(data.name, data.response, sep = ""),
-                          each = nlevels(temp))
-        table.level <- levels(temp)
-        table.agg <- format(aggregate(data[, var], by = list(Var = temp),
-                                      summary)$x, nsmall = 2)
-        table.results <- as.data.frame(cbind(name.var, name.split, 
-                                             table.level, table.agg))
-        colnames(table.results)[1] <- "Variable"
-        colnames(table.results)[2] <- "Split On"
-        colnames(table.results)[3] <- "Levels"
+num.freq = function(df, list, var){
+    for (fac in list){
+        name.var = rep(paste(data.name, var, sep = ""),
+                       each = nlevels(df[, fac]))
+        name.split = rep(paste(data.name, fac, sep = ""),
+                         each = nlevels(df[, fac]))
+        table.level = levels(df[, fac])
+        table.agg = format(aggregate(df[, var], by = list(Var = df[, fac]),
+                                     summary)$x, nsmall = 2)
+        table.results = as.data.frame(cbind(name.var, name.split, 
+                                            table.level, table.agg))
+        colnames(table.results)[1] = "Variable"
+        colnames(table.results)[2] = "Split On"
+        colnames(table.results)[3] = "Levels"
         print(table.results)
     }
 }
@@ -211,47 +204,42 @@ num.freq <- function(data, list){
 # num.trims()
 #--------------------------------------
 # Function to trim numeric variables at various percentiles
-num.trims <- function(data, list){
+num.trims = function(df, list){
     require(scales)
-    for (var in list){
+    for (num in list){
         # 1st and 99th
-        T99 <- quantile(data[, var], c(0.01, 0.99))
-        data[paste(var, "T99", sep = "_")] <- squish(data[, var], T99)
-        
+        T99 = quantile(df[, num], c(0.01, 0.99))
+        df[paste(num, "T99", sep = "_")] = squish(df[, num], T99)
         # 5th and 95th
-        T95 <- quantile(data[, var], c(0.05, 0.95))
-        data[paste(var, "T95", sep = "_")] <- squish(data[, var], T95)
-        
+        T95 = quantile(df[, num], c(0.05, 0.95))
+        df[paste(num, "T95", sep = "_")] = squish(df[, num], T95)
         # 10th and 90th
-        T90 <- quantile(data[, var], c(0.10, 0.90))
-        data[paste(var, "T90", sep = "_")] <- squish(data[, var], T90)
-        
+        T90 = quantile(df[, num], c(0.10, 0.90))
+        df[paste(num, "T90", sep = "_")] = squish(df[, num], T90)
         # 25th and 75th
-        T75 <- quantile(data[, var], c(0.25, 0.75))
-        data[paste(var, "T75", sep = "_")] <- squish(data[, var], T75)
+        T75 = quantile(df[, num], c(0.25, 0.75))
+        df[paste(num, "T75", sep = "_")] = squish(df[, num], T75)
     }
-    return(data)
+    return(df)
 }
 
 #--------------------------------------
 # num.trans()
 #--------------------------------------
 # Function to transform numeric variables
-num.trans <- function(data, list){
-    for (var in list){
+num.trans = function(df, list){
+    for (num in list){
         # Natural Log
-        var_ln <- paste(var, "ln", sep = "_")
-        data[var_ln] <- (sign(data[, var]) * log(abs(data[, var])+1))
-        
+        num_ln = paste(num, "ln", sep = "_")
+        df[num_ln] = (sign(df[, num]) * log(abs(df[, num])+1))
         # Square Root
-        var_rt <- paste(var, "rt", sep = "_")
-        data[var_rt] <- (sign(data[, var]) * sqrt(abs(data[, var])+1))
-        
+        num_rt = paste(num, "rt", sep = "_")
+        df[num_rt] = (sign(df[, num]) * sqrt(abs(df[, num])+1))
         # Square
-        var_sq <- paste(var, "sq", sep = "_")
-        data[var_sq] <- (data[, var] * data[, var])
+        num_sq = paste(num, "sq", sep = "_")
+        df[num_sq] = (df[, num] * df[, num])
     }
-    return(data)
+    return(df)
 }
 
 #==============================================================================
@@ -266,19 +254,18 @@ num.trans <- function(data, list){
 # fac.barplot()
 #--------------------------------------
 # Function to create barplots of factor variables
-fac.barplot <- function(data, list, cat = F){
-    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
-    for (var in list){
+fac.barplot = function(df, list, var = NULL, cat = F){
+    for (fac in list){
         if (cat){
-            barplot(table(temp, data[, var]),
-                    main = paste("Variable: ", data.name, var, sep = ""),
-                    ylim = c(0, 1.1*max(summary(data[, var]))),
+            barplot(table(df[, var], df[, fac]),
+                    main = paste("Variable: ", data.name, fac, sep = ""),
+                    ylim = c(0, 1.1*max(summary(df[, fac]))),
                     ylab = "Frequency", beside = T)
         }
         if (!cat){
-            plot(data[, var],
-                 main = paste("Variable: ", data.name, var, sep = ""),
-                 ylim = c(0, 1.1*max(summary(data[, var]))),
+            plot(df[, fac],
+                 main = paste("Variable: ", data.name, fac, sep = ""),
+                 ylim = c(0, 1.1*max(summary(df[, fac]))),
                  ylab = "Frequency")
         }
     }
@@ -288,16 +275,15 @@ fac.barplot <- function(data, list, cat = F){
 # fac.mosaic()
 #--------------------------------------
 # Function to create mosaic plots of factor variables
-fac.mosaic <- function(data, list){
+fac.mosaic = function(df, list, var){
     require(RColorBrewer)
-    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
-    for (var in list){
-        plot(temp, data[, var], 
-             col = brewer.pal(nlevels(data[, var]), "Spectral"),
-             main = paste(data.name, data.response," versus ",
-                          data.name, var, sep = ""),
-             xlab = paste(data.name, data.response, sep = ""),
-             ylab = paste(data.name, var, sep = ""))
+    for (fac in list){
+        plot(df[, var], df[, fac], 
+             col = brewer.pal(nlevels(df[, fac]), "Spectral"),
+             main = paste(data.name, var," versus ",
+                          data.name, fac, sep = ""),
+             xlab = paste(data.name, var, sep = ""),
+             ylab = paste(data.name, fac, sep = ""))
     }
 }
 
@@ -309,37 +295,36 @@ fac.mosaic <- function(data, list){
 # fac.freq()
 #--------------------------------------
 # Frequency of occurence split by named factor for factor variables
-fac.freq <- function(data, list, cat = F){
-    temp <- eval(parse(text = paste(data.name, data.response, sep = "")))
-    for (var in list){
+fac.freq = function(df, list, var = NULL, cat = T){
+    for (fac in list){
         if (cat){
-            name.var <- rep(paste(data.name, var, sep = ""),
-                            each = nlevels(temp))
-            name.split <- rep(paste(data.name, data.response, sep = ""),
-                              each = nlevels(temp))
-            table.level <- levels(temp)
-            table.agg <- aggregate(data[, var], by = list(Var = temp), 
-                                   summary)$x
-            table.prop <- format(round(prop.table(table.agg, 1) * 100, 
-                                       digits = 2), nsmall = 2)
-            table.results <- as.data.frame(cbind(name.var, name.split, 
-                                                 table.level, table.prop))
-            colnames(table.results)[1] <- "Variable"
-            colnames(table.results)[2] <- "Split On"
-            colnames(table.results)[3] <- "Levels"
+            name.var = rep(paste(data.name, var, sep = ""),
+                           each = nlevels(df[, fac]))
+            name.split = rep(paste(data.name, fac, sep = ""),
+                             each = nlevels(df[, fac]))
+            table.level = levels(df[, fac])
+            table.agg = aggregate(df[, var], by = list(Var = df[, fac]), 
+                                  summary)$x
+            table.prop = format(round(prop.table(table.agg, 1) * 100, 
+                                      digits = 2), nsmall = 2)
+            table.results = as.data.frame(cbind(name.var, name.split, 
+                                                table.level, table.prop))
+            colnames(table.results)[1] = "Variable"
+            colnames(table.results)[2] = "Split On"
+            colnames(table.results)[3] = "Levels"
             print(table.results)
         }
         if (!cat){
-            name.var <- rep(paste(data.name, var, sep = ""), each = 2)
-            name.type <- c("Raw", "Percent")
-            table.agg <- t(summary(data[, var]))
-            table.prop <- format(round(prop.table(table.agg) * 100, 
-                                       digits = 2), nsmall = 2)
-            table.row <- rbind(table.agg, table.prop)
-            table.col <- cbind(name.var, name.type, table.row)
-            table.results <- as.data.frame(table.col)
-            colnames(table.results)[1] <- "Variable"
-            colnames(table.results)[2] <- "Type"
+            name.var = rep(paste(data.name, var, sep = ""), each = 2)
+            name.type = c("Raw", "Percent")
+            table.agg = t(summary(df[, var]))
+            table.prop = format(round(prop.table(table.agg) * 100, 
+                                      digits = 2), nsmall = 2)
+            table.row = rbind(table.agg, table.prop)
+            table.col = cbind(name.var, name.type, table.row)
+            table.results = as.data.frame(table.col)
+            colnames(table.results)[1] = "Variable"
+            colnames(table.results)[2] = "Type"
             print(table.results)
         }
     }
@@ -349,14 +334,14 @@ fac.freq <- function(data, list, cat = F){
 # fac.flag()
 #--------------------------------------
 # Function to create indicator variables from factor variable levels
-fac.flag <- function(data, list){
-    for (var in list){
-        for (level in unique(data[, var])){
-            data[paste(var, level, sep = "_")] <- 
-                ifelse(data[, var] == level, 1, 0)
+fac.flag = function(df, list){
+    for (fac in list){
+        for (level in unique(df[, fac])){
+            df[paste(fac, level, sep = "_")] = 
+                ifelse(df[, fac] == level, 1, 0)
         }
     }
-    return(data)
+    return(df)
 }
 
 #==============================================================================
@@ -369,44 +354,44 @@ fac.flag <- function(data, list){
 
 # Download and assign data
 library(ISLR)
-auto <- Auto
+auto = Auto
 
 #------------------------------------------------------------------------------
 # Data Prep
 #------------------------------------------------------------------------------
 
 # Assign column names
-auto.cn.all <- colnames(auto)
+auto.cn.all = colnames(auto)
 
 # Treat "?" as NA
-auto[auto == "?"] <- NA
+auto[auto == "?"] = NA
 
 # Create missing flags
-auto <- m.flag(auto, auto.cn.all)
+auto = m.flag(auto, auto.cn.all)
 
 # Assign data.frame with missing values removed
 # Note: have to do this until a missing impute solution is coded
-auto <- na.omit(auto)
+auto = na.omit(auto)
 
 # Handle variable conversions
-auto$horsepower <- as.numeric(as.character(auto$horsepower))
-auto$cylinders <- as.factor(auto$cylinders)
-auto$origin <- as.factor(auto$origin)
+auto$horsepower = as.numeric(as.character(auto$horsepower))
+auto$cylinders = as.factor(auto$cylinders)
+auto$origin = as.factor(auto$origin)
 
 # Drop 'name'
-auto <- subset(auto, select = -name)
+auto = subset(auto, select = -name)
 
 # Assign column names, excluding missing flags
 # all = all, numeric = num, factor = fac
-auto.cn.all <- grep("^MF_", colnames(auto), value = T, invert = T)
-auto.cn.num <- grep("^MF_", colnames(auto[, !sapply(auto, is.factor)]), 
+auto.cn.all = grep("^MF_", colnames(auto), value = T, invert = T)
+auto.cn.num = grep("^MF_", colnames(auto[, !sapply(auto, is.factor)]), 
                     value = T, invert = T)
-auto.cn.fac <- grep("^MF_", colnames(auto[, sapply(auto, is.factor)]), 
+auto.cn.fac = grep("^MF_", colnames(auto[, sapply(auto, is.factor)]), 
                     value = T, invert = T)
 
 # Assign data name and response name
-data.name <- "auto$"
-data.response <- "mpg"
+data.name = "auto$"
+data.response = "mpg"
 
 #------------------------------------------------------------------------------
 # Visual EDA
@@ -436,27 +421,27 @@ fac.freq(auto, auto.cn.fac)
 # Numeric variables
 #--------------------------------------
 # Trims
-auto <- num.trims(auto, auto.cn.num)
+auto = num.trims(auto, auto.cn.num)
 
 # Re-assign column names, excluding missing flags
-auto.cn.num <- grep("^MF_", colnames(auto[, !sapply(auto, is.factor)]), 
+auto.cn.num = grep("^MF_", colnames(auto[, !sapply(auto, is.factor)]), 
                     value = T, invert = T)
 
 # Transforms
-auto <- num.trans(auto, auto.cn.num)
+auto = num.trans(auto, auto.cn.num)
 
 #--------------------------------------
 # Factor variables
 #--------------------------------------
 # Flags
-auto <- fac.flag(auto, auto.cn.fac)
+auto = fac.flag(auto, auto.cn.fac)
 
 #--------------------------------------
 # Verification
 #--------------------------------------
-auto.names <- data.frame(colnames(auto), sapply(auto, class))
-rownames(auto.names) <- seq(1, nrow(auto.names), by = 1)
-colnames(auto.names) <- c("Variable", "Class")
+auto.names = data.frame(colnames(auto), sapply(auto, class))
+rownames(auto.names) = seq(1, nrow(auto.names), by = 1)
+colnames(auto.names) = c("Variable", "Class")
 View(auto.names)
 
 # All looks good, data are now ready for AVS!

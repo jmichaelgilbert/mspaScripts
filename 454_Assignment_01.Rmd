@@ -102,7 +102,7 @@ From the `Wine` metadata file, the response variable is the class identifier, `C
 The dimensions of the `Wine` data set indicate there are `178` observations and `14` variables, including the response variable `Class`. The variable `Class` was recoded from `integer()` to `factor()`, while the variables `Magnesium` and `Proline` were recoded from `integer()` to `numeric()`. __Table 1__ below shows the class of each variable after recoding. Typically, a brief description or definition of each variable would also be included, but this was not provided by the data dictionary and is excluded here, rather than asserting hypothesized definitions as factual definitions. 
 
 \begin{center}
-Table 1: Variable Classes in Wine Data Set
+Table 1: Variable Classes in `Wine` Data Set
 \end{center}
 
 ```{r DQC.1, echo = F}
