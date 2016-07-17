@@ -307,7 +307,7 @@ fac.mosaic = function(df, list, var){
 # fac.freq()
 #--------------------------------------
 # Frequency of occurence split by named factor for factor variables
-fac.freq = function(df, list, var = NULL, cat = T){
+fac.freq = function(df, list, var, cat = T){
     for (fac in list){
         if (cat){
             name.var = rep(paste(data.name, var, sep = ""),
@@ -327,13 +327,13 @@ fac.freq = function(df, list, var = NULL, cat = T){
             print(table.results)
         }
         if (!cat){
-            name.var = rep(paste(data.name, var, sep = ""), each = 2)
+            name.fac = rep(paste(data.name, fac, sep = ""), each = 2)
             name.type = c("Raw", "Percent")
-            table.agg = t(summary(df[, var]))
+            table.agg = t(summary(df[, fac]))
             table.prop = format(round(prop.table(table.agg) * 100, 
                                       digits = 2), nsmall = 2)
             table.row = rbind(table.agg, table.prop)
-            table.col = cbind(name.var, name.type, table.row)
+            table.col = cbind(name.fac, name.type, table.row)
             table.results = as.data.frame(table.col)
             colnames(table.results)[1] = "Variable"
             colnames(table.results)[2] = "Type"
