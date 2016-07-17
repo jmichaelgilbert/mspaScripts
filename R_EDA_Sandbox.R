@@ -53,13 +53,13 @@ df.cn.all = grep("^[MF_]", colnames(df), value = T, invert = T)
 # fit()
 #--------------------------------------
 # Function to add MSE to other measures from forecast::accuracy
-fit <- function(f, x){
+fit = function(f, x){
     require(forecast)
-    temp <- data.frame(forecast::accuracy(f, x), 
+    temp = data.frame(forecast::accuracy(f, x), 
                        forecast::accuracy(f, x)[, 2]^2)
-    temp <- temp[, -c(1)]
+    temp = temp[, -c(1)]
     colnames(temp)[6] <- "MSE"
-    temp <- temp[c(6, 1, 2, 3, 4, 5)]
+    temp = temp[c(6, 1, 2, 3, 4, 5)]
     print(temp)
 }
 
@@ -71,11 +71,11 @@ fit <- function(f, x){
 # miss.flag()
 #--------------------------------------
 # Function to create indicator variables as missing flags
-miss.flag <- function(df, list){
+miss.flag = function(df, list){
     for (var in list){
         if (sum(is.na(df[, var])) > 0){
-            df[paste("MF", var, sep = "_")] <- 
-                ifelse(is.na(df[, var]), 1, 0)
+            df[paste("MF", var, sep = "_")] = 
+                as.factor(ifelse(is.na(df[, var]), 1, 0))
         }
     }
     return(df)
@@ -362,7 +362,7 @@ fac.flag = function(df, list){
     for (fac in list){
         for (level in unique(df[, fac])){
             df[paste(fac, level, sep = "_")] = 
-                ifelse(df[, fac] == level, 1, 0)
+                as.factor(ifelse(df[, fac] == level, 1, 0))
         }
     }
     return(df)
