@@ -221,6 +221,18 @@ num.trans = function(df, list){
 #------------------------------------------------------------------------------
 
 #--------------------------------------
+# fac.boxplot()
+#--------------------------------------
+fac.boxplot = function(df, list, var){
+    for (num in list){
+        boxplot(df[, var] ~ df[, num], col = "grey",
+                main = paste(data.name, num," versus ",
+                             data.name, var, sep = ""),
+                ylab = "Values")
+    }
+}
+
+#--------------------------------------
 # fac.barplot()
 #--------------------------------------
 # Function to create barplots of factor variables
