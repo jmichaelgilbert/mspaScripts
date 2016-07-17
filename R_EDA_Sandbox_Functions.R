@@ -171,6 +171,18 @@ num.freq = function(df, list, var){
 }
 
 #--------------------------------------
+# num.scale()
+#--------------------------------------
+# Function to scale (normalize: mean = 0, sd = 1) numeric variables
+num.scale = function(df, list){
+    for (num in list){
+        num_scale = paste(num, "scale", sep = "_")
+        df[num_scale] = scale(df[, num])
+    }
+    return(df)
+}
+
+#--------------------------------------
 # num.trims()
 #--------------------------------------
 # Function to trim numeric variables at various percentiles
