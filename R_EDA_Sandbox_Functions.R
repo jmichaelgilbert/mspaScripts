@@ -166,7 +166,7 @@ num.freq = function(df, list, var){
         colnames(table.results)[1] = "Variable"
         colnames(table.results)[2] = "Split On"
         colnames(table.results)[3] = "Levels"
-        print(table.results)
+        return(table.results)
     }
 }
 
@@ -306,7 +306,7 @@ fac.freq = function(df, list, var, cat = T){
             colnames(table.results)[1] = "Variable"
             colnames(table.results)[2] = "Split On"
             colnames(table.results)[3] = "Levels"
-            print(table.results)
+            return(table.results)
         }
         if (!cat){
             name.fac = rep(paste(data.name, fac, sep = ""), each = 2)
@@ -319,7 +319,7 @@ fac.freq = function(df, list, var, cat = T){
             table.results = as.data.frame(table.col)
             colnames(table.results)[1] = "Variable"
             colnames(table.results)[2] = "Type"
-            print(table.results)
+            return(table.results)
         }
     }
 }
