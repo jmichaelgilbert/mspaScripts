@@ -1,0 +1,1740 @@
+---
+title: "454_Assignment_02"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document: default
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+    number_sections: yes
+geometry: margin = 0.5in
+---
+\
+```{r setup.R, include = F, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(caret)
+library(car)
+library(leaps)
+library(pander)
+library(rattle)
+library(rpart)
+```
+
+```{r setup_knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set and preserve par(mfcol()) between chunks (calls to it can be hidden)
+#knitr::opts_knit$set(global.par = T)
+```
+
+```{r setup_FUN, include = F}
+#==============================================================================
+# Functions
+#==============================================================================
+# Create function to source functions from GitHub
+source.GitHub = function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", 
+                                          "cacert.pem", package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url = "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+```
+
+# Introduction
+
+The purpose of this report is to assess data quality, conduct exploratory data analysis, build models, and compare model results based on the `TMS` (Two Month's Salary) dataset. The dataset and a description file (including a data dictionary) were provided. 
+
+The dataset contains attributes relating to round-cut diamonds at ten brick-and-mortar jewelers, and seven online jewelers. The response variable is `price`, representing the price for the round-cut diamond in U.S. dollars as of April 2001. __The goal of the model is to accurately predict the price for a round-cut diamond based on provided or derived attributes in the dataset__.
+
+This report contains five sections:
+
+1. Data Quality Check
+2. Exploratory Data Analysis
+3. Model Build
+4. Model Comparison
+5. Conclusion & Next Steps
+
+An appendix of relevant `R` code used in producing the report is included. The code is grouped by the same four sections.
+
+```{r DIPS1, include = F}
+#==============================================================================
+# Data Import, Prep, and Staging
+#==============================================================================
+
+#--------------------------------------
+# Import
+#--------------------------------------
+# Read data
+tms = read.csv("~/Two_Months_Salary.csv", header = T)
+
+# Check dimensions
+dim(tms)
+
+# Check variable classes
+sapply(tms, class)
+
+# Summary statistics
+summary(tms)
+
+# Check for NAs
+colSums(is.na(tms))[colSums(is.na(tms)) > 0]
+
+#--------------------------------------
+# Prep
+#--------------------------------------
+# Recode integers to numeric
+tms$price = as.numeric(tms$price)
+
+# Recode integers to factor
+tms$color = as.factor(tms$color)
+tms$clarity = as.factor(tms$clarity)
+
+# Set factor variable levels
+levels(tms$color) = c("D", "E", "F", "G", "H", "I", "J", "K", "L")
+levels(tms$clarity) = c("IF", "VVS1", "VVS2", "VS1", "VS2", "SI1", "SI2", 
+                        "I1", "I2")
+
+# Rename factor variable levels (replace spaces)
+levels(tms$store) = c("Ashford", "Ausmans", "Blue_Nile", "Chalmers", 
+                      "Danford", "Fred_Meyer", "Goodmans", "Kay", 
+                      "R_Holland", "Riddles", "University", "Zales")
+levels(tms$cut) = c("Ideal", "Not_Ideal")
+
+#--------------------------------------
+# Staging
+#--------------------------------------
+# Store dataset name for use in titles, etc. later
+data.name <- "tms$"
+
+# Set response variable
+data.response <- "price"
+
+# Assign column names
+tms.cn.all = colnames(tms)
+
+# Assign numeric column names
+tms.cn.num = colnames(tms[, !sapply(tms, is.factor)])
+
+# Assign factor column names
+tms.cn.fac = colnames(tms[, sapply(tms, is.factor)])
+
+# Drop response variable in tms.cn.num
+tms.cn.num = tms.cn.num[!tms.cn.num == data.response]
+```
+
+# Data Quality Check
+
+From the `TMS` metadata file, the response variable is `price`, which is a quantitative continuous variable. The metadata file also provides definitions and explanations for the variables `carat`, `color`, `clarity`, and `cut` (the "Four Cs"); as well as `channel` (the "Sales Channel"). The final variable is `store`, which refers to the company selling the _round-cut_ diamond.
+
+This section contains four parts: _Data Summary_, _Missing Values_, _Potential Outliers_, and _Invalid Values_.
+
+## Data Summary
+
+The dimensions of the `TMS` dataset indicate there are `425` observations and `7` variables, including the response variable `price`. The variable `price` was recoded from `integer()` to `numeric()`, while the variables `color` and `clarity` were recoded from `integer()` to `factor()`. 
+
+__Table 1__ below shows the class of each variable after recoding. Brief variable definitions are also included, sourced from the metadata file accompanying the dataset.
+
+\begin{center}
+Table 1: Variable Dictionary for `TMS` Dataset
+\end{center}
+
+```{r DQC1, echo = F}
+# Build table
+tms.dict = as.data.frame(sapply(tms, class))
+tms.def = c("Weight of diamond in carats (1 carat = 200mg)", 
+            "GIA color scale, standardized for grading", 
+            "GIA visibility scale, number and size of inclusions", 
+            "Binary, defined by creator of dataset", 
+            "Medium of purchase", 
+            "Name of store (company) selling diamond", 
+            "Cost in U.S. dollars, April 2001")
+tms.dict = data.frame(rownames(tms.dict), tms.dict, tms.def)
+colnames(tms.dict) = c("Variable", "Class", "Definition")
+rownames(tms.dict) = 1:nrow(tms.dict)
+rm(tms.def)
+
+# Output
+pander(tms.dict, caption = "", justify = "left")
+```
+
+__Table 2__ below shows summary statistics for each variable in the `TMS` dataset. The _Exploratory Data Analysis_ section expands on this by using quantitative and qualitative methods to look for interesting relationships in the dataset. 
+
+\begin{center}
+Table 2: Summary Statistics of `TMS` Variables
+\end{center}
+
+```{r DQC2, echo = F}
+pander(summary(tms[1:4]), caption = "", justify = "left")
+pander(summary(tms[5:7]), caption = "", justify = "left")
+```
+
+## Missing Values
+
+Another part of the data quality check is to check for missing values and potential outliers. In `R`, missing values are coded as `NA`. There is a practical difference between a `NA` value and a `NULL` value, though `R` does not make this distinction. That said, it is valuable to understand which values are `NA` and which values are `NULL` in the dataset, despite `R` coding both as `NA`.
+
+There do not appear to be any `NA` values in the `Wine` dataset. For the most part, `R` will detect `NA` values and assign them as such. However, if other characters are used to denote `NA` values (e.g. the `?` character), `R` may not detect them. Part of the data quality check includes examining the dataset for such occurrences. Counts of `NA` values either identified by `R` or manually coded, would be included in the output from the `summary()` function (such as in __Table 2__ above). 
+
+There does not appear to be any `NA` or `NULL` values in the `TMS` dataset.
+
+## Potential Outliers
+
+Detecting potential outliers begs the question of what constitutes an outlier. There is no single definition for an outlier, and at times the term outlier might be substituted for another term altogether (e.g. extreme observation). A simple definition can be found in _Introduction to Linear Regression Analysis_ by Montgomery, Peck, and Vining (5th Edition, p. 43): "_Outliers are observations that differ considerably from the rest of the data_." Detecting potential outliers is important, because they can exert leverage or influence, affect model results - during validation or deployment.
+
+Qualitative methods to detect potential outliers include creating _histograms_, _density plots_, and/or _boxplots_. These plots should not be interpreted blindly! For instance, observations beyond the whiskers of a boxplot are not necessarily outliers - in `R`, the default setting is to draw the whiskers at 1.5 times the interquartile range (25th to 75th percentiles) from the box. Histograms may be useful, but interpretation can vary depending on the number of bins used. Alternatively, histograms can be plotted using bins of equally spaced probabilities - the widths of the bins vary, but the area represented by each bin is the same.
+
+Potential outliers in the `TMS` dataset are assessed and discussed in the _Exploratory Data Analysis_ section, where multiple plots (including histograms and boxplots) are produced for each variable. Only relevant plots are included in the report, but all plots may be reproduced using the code in the appendix.
+
+## Invalid Values
+
+The data quality check should also look for invalid values. For `numeric` variables, this might be values which are negative in a variable where they should only be positive. For `factor` or `categorical` variables, this could be a miscoded level - examining the frequency of values at each level can be done quantitatively with counts, or qualitatively with barplots. 
+
+Whether checking for missing values, potential outliers, or invalid values, it is important to be mindful of sentinel values, or values that are used as an indicator for some meaning or status. For example: an `AGE` of `-1` could mean `Unknown`, while a `HOME_VALUE` of `0` could mean `Renter`.
+
+There does not appear to be any invalid values in the `TMS` dataset.
+
+# Exploratory Data Analysis
+
+After the initial data quality check, data are further examined to identify interesting information or detect interesting relationships. That process is known as Exploratory Data Analysis or EDA. 
+
+The type of EDA conducted depends on the statistical problem at hand: is the problem one of `regression`, or one of `classification`? The statistical problem faced with the `TMS` dataset is one of `regression`. 
+
+It is also important to understand what might _not_ be useful. Scatterplots of `factor` variables against the `numeric` response variable are not useful for this statistical problem. 
+
+To keep content relevant, many of the figures produced are not included here, but can be reproduced using the included code in the _Appendix_.
+
+This section contains three parts: _Traditional EDA - Quantitative_, _Traditional EDA - Qualitative_, and _Decision Tree EDA_. The _Model Build_ section makes use of _Model Based EDA_. 
+
+_Note_: At this point, the `TMS` dataset does not contain any derived variables. Results from EDA help inform possible variable derivations (e.g. trims, transforms).
+
+## Traditional EDA - Quantitative
+
+In the `TMS` dataset, the only `numeric` predictor variable is `carat`. The correlation between the response variable `price` and `carat` is positive and quite strong, at `0.8796`.
+
+__Table 2__ illustrated summary statistics for the variables in the `TMS` dataset. For `factor` variables, only the number of occurrences by level were provided. In looking for interesting relationships, a custom function was written to view summary statistics for the response variable `price` by level for each `factor` variable in the dataset. 
+
+_Unfortunately_, this approach did not really uncover any interesting relationships. One explanation is that `carat` has an outsized effect on `price`. For example, in __Table 3__ below, `price` by `color` is shown. Although the level `D` corresponds to 'perfectly colorless', the mean and median price of a round-cut diamond in `H` is higher.
+
+\begin{center}
+Table 3: Summary Statistics for `price` by Level of `color`
+\end{center}
+
+```{r EDA1, echo = F}
+pander(num.freq(tms, "color", "price"), caption = "", justify = "left")
+```
+
+Looking at summary statistics for `price` and `carat` by `store`:
+
+* Goodmans had the highest mean `price` ($8,465), but the seventh-highest mean `carat` (0.9662); 
+* Ashford had the second-highest mean `price` ($7,751), but the highest mean `carat` (1.2300). 
+
+Though interesting on face, tables were not considered relevant enough to include: Goodmans is an `Independent` store, while `Ashford` is an `Internet` store, and it seems reasonable that a brick-and-mortar store would have higher prices on a per-carat basis.
+
+_A final observation_: the mean values for both `price` and `carat` by `cut` were lower for the level `Ideal` than `Not Ideal`. Recall `cut` is a _subjective_ variable created and populated by the dataset author. Though a different question, it does raise the spectre of subconscious bias. For example: was `cut` judged in and of itself, or did other data subconsciously influence the chosen value?
+
+\begin{center}
+Table 5: Summary Statistics for `price` by Level of `cut`
+\end{center}
+
+```{r EDA2, echo = F}
+pander(num.freq(tms, "cut", "price"), caption = "", justify = "left")
+```
+
+\begin{center}
+Table 6: Summary Statistics for `carat` by Level of `cut`
+\end{center}
+
+```{r EDA3, echo = F}
+pander(num.freq(tms, "cut", "carat"), caption = "", justify = "left")
+```
+
+## Traditional EDA - Qualitative
+
+For the `numeric` variable `carat`, a panel of four plots was examined. The plots are shown in __Figure 1__ below:
+
+* The histogram shows `carat` is roughly normally distributed, with a slight rightward skew for larger values;
+* The boxplot shows `carat` contains a number of observations outside of the upper whisker (in-line with the histogram); 
+* The scatterplot is a nice visual compliment to the strong positive correlation between `price` and `carat`; the megaphone shape is noted, but would be of bigger concern in model residuals
+* The Q-Q plot shows `carat` mostly follows the theoretical normal distribution, with the most pronounced deviance in the tails.
+
+\begin{center}
+Figure 1: Panel Plots for `carat`
+\end{center}
+
+```{r EDA4, echo = F, fig.height = 6.5}
+num.plots(tms, "carat", "price", norm = T)
+```
+
+For the `factor` variables, boxplots were created of the levels (x-axis) versus the response variable `price` (y-axis). Of these, the `channel` showed the most distinct levels.
+
+\begin{center}
+Figure 2: Boxplots of `channel` Levels Versus `price`
+\end{center}
+
+```{r EDA5, echo = F, fig.width = 4.75, fig.height = 4}
+fac.boxplot(tms, "channel", "price")
+```
+
+__Outliers: Revisited__ 
+Qualitative EDA can be a very inexpensive way to better understand the dataset, visually inspect variables (and interactions), and uncover interesting relationships. Boxplots are useful, but as mentioned earlier, beg the question of how an outlier is defined, and how points on the boxplot are calculated.
+
+Variables in the `TMS` dataset with potential _relevant_ outliers are described below.
+
+The variable `carat` shows potential outliers in the boxplot. However, the Q-Q plot suggests these values are closer to _leverage points_ than _influential observations_ . See __Figure 1__ above.
+
+Boxplots of levels of the variable `color` versus `price` show many potential outliers. However, many of these are remedied when looking at `color` versus `carat` (suggesting that yes, size does matter).
+
+\begin{center}
+Figure 3: Boxplots of `color` Levels Versus `price` and `carat`
+\end{center}
+
+```{r EDA6, echo = F, fig.width = 4.75, fig.height = 8}
+par(mfrow=c(2, 1))
+fac.boxplot(tms, "color", "price")
+fac.boxplot(tms, "color", "carat")
+par(mfrow=c(1, 1))
+```
+
+Boxplots of levels of the variable `cut` versus `price`, and `cut` versus `carat` show more potential outliers in the _Not Ideal_ level than _Ideal_, confirming the findings in Quantitative EDA. See __Table 5__ and __Table 6__ above.
+
+\begin{center}
+Figure 4: Boxplots of `cut` Levels Versus `price` and `carat`
+\end{center}
+
+```{r EDA7, echo = F, fig.width = 4.75, fig.height = 8}
+par(mfrow=c(2, 1))
+fac.boxplot(tms, "cut", "price")
+fac.boxplot(tms, "cut", "carat")
+par(mfrow=c(1, 1))
+```
+
+Boxplots of levels of the variable `channel` versus `price` _show more potential outliers_ than `channel` versus `carat`; in particular the level _Internet_.
+
+\begin{center}
+Figure 5: Boxplots of `channel` Levels Versus `price` and `carat`
+\end{center}
+
+```{r EDA8, echo = F, fig.width = 4.75, fig.height = 8}
+par(mfrow=c(2, 1))
+fac.boxplot(tms, "channel", "price")
+fac.boxplot(tms, "channel", "carat")
+par(mfrow=c(1, 1))
+```
+
+Boxplots of levels of the variable `store` versus `price`, and `store` versus `carat` suggest a premium is paid for round-cut diamonds from the store `Blue Nile`.
+
+\begin{center}
+Figure 6: Boxplots of `store` Levels Versus `price` and `carat`
+\end{center}
+
+```{r EDA9, echo = F, fig.width = 4.75, fig.height = 8}
+par(mfrow=c(2, 1))
+fac.boxplot(tms, "store", "price")
+fac.boxplot(tms, "store", "carat")
+par(mfrow=c(1, 1))
+```
+
+Interestingly, `Blue Nile` is an `Internet` store, and likely influences the findings in the fourth bullet.
+
+## Decision Tree EDA
+
+A naive decision tree was constructed, fitting the response variable against all other variables in the `TMS` dataset. Interesting information can still be revealed from this naive model. 
+
+In the tree plot below, each rectangle corresponds to either a root, leaf, or terminal node. Within each node:
+
+* The first line refers to the mean value of the response;
+* The second line contains the number of observations at that node; and the percentage of rows at that node, of the total rows in the dataset.
+
+The first node is the root node. The mean value of the response variable `price` is `6356` (line 1). There are `425` observations in this node, making up `100%` of the rows in the dataset (line 2). The tree then splits on the `carat` variable. Values of `carat` less than `1.4` branch to the left, while values greater than or equal to `1.4` branch to the right. This continues until arriving at a terminal node.
+
+\begin{center}
+Figure 7: Naive Tree Plot of `price`
+\end{center}
+
+```{r EDA10, echo = F, fig.height = 6.5}
+fancyRpartPlot(rpart(tms$price ~ ., data = tms), sub = "", cex = 0.8)
+```
+
+Of the six predictor variables fed to the naive tree model, only three are used: `carat`, `clarity`, and `store`. The tree model implies _potential_ variable importance, as these variables (and levels or values) were most useful in predicting the _mean_ value of the response variable `price`. 
+
+Even cursory EDA can provide valuable insight and information on the relationships within the dataset. The relationships identified here can be leveraged in model construction. The branches of the naive tree model illustrate potentially important variables and their associated levels or values.
+
+# Model Build
+
+This section focuses on building models to accurately predict the response variable `price` in the `TMS` dataset. There are four parts:
+
+* Model-based EDA, which uses naive models to uncover interesting properties or relationships in the `TMS` dataset;
+* Variable Derivations & Manipulations, which creates new predictor variables from derivations or manipulations;
+* Model-based EDA Revisited, which revisits model-based EDA using the predictor variables created in the previous section;
+* Model Construction, which builds a modeling suite of four distinct models over three model types.
+
+The _Model Comparison_ section discusses results and predictive accuracy across the modeling suite.
+
+```{r MB1, include = F}
+# Create clone versions of data.frame
+tms.og = tms
+tms.mod = tms
+
+# Random sample into 70/30 training-test split
+set.seed(123)
+tms.train = createDataPartition(tms$price, p = 0.70, list = F)
+tms.test = as.matrix(as.integer(rownames(tms))[-tms.train])
+
+# Specify fit parameters
+set.seed(123)
+fitControl = trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+#------------------------------------------------------------------------------
+# Variable Derivations & Manipulations
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Levels
+#--------------------------------------
+# Create levels
+tms = fac.flag(tms, tms.cn.fac)
+
+# Drop original variables
+tms = tms[, !names(tms) %in% tms.cn.fac]
+
+# Re-assign factor column names
+tms.cn.fac = colnames(tms[, sapply(tms, is.factor)])
+```
+
+The `TMS` dataset was split by a random sample into a 70/30 training-test set. The training set was used for model-based EDA, and any subsequent variable derivations of manipulations occurred in both the training and test set for model construction. The random sample closely approximates the split, with `70.6` percent of rows going in the training set, and `29.4` percent of rows going in the test set.
+
+## Model-based EDA
+
+Model-based EDA is another way to glean information about the relationships in the dataset. Naive models are used for this purpose, since the goal at this stage is not to build a highly accurate predictive model, but to uncover additional information. All models fit used the training set of the `TMS` dataset. The fit models used a two-step process, described below.
+
+First, the `{caret}` package fit models with the `train()` parameter `method` corresponding to forward, backward, stepwise, and/or exhaustive selection methods. Minimizing `RMSE` (Root Mean Square Error) was used as the metric for "best" model selection under each AVS method. Although these are naive models, repeated cross-validation (10 folds, repeated 3 times) was used during the AVS technique. In looking over the model results, the model with the lowest `RMSE` was chosen. The model formula (intercept, beta coefficients, variable name) was examined, as was variable importance (a function within `{caret}`).
+
+Second, the `lm()` function in `{stats}` fit the model according to the variables selected in the best model from the `train()` function in `{caret}`. While the intercept and beta coefficient values remained the same between the models, the purpose of this was to visually examine model residuals (scatterplot, Q-Q plot), the `AIC` value, and `VIF` information. The `AIC` value was examined as it considers parsimony. Measures of predictive accuracy (e.g. MSE, RMSE, MASE, etc.) were not computed at this stage as the model-based EDA takes place in-sample on the training set.
+
+### Model 1
+_Original Variables, Training Set, Backward Selection_
+
+```{r MB2, include = F, warning = F}
+#--------------------------------------
+# Model 1
+#--------------------------------------
+# Original Variables, Training Set, Backward Selection
+
+#------------------
+# leapBackward
+#------------------
+set.seed(123)
+tms.train.bwd.m1.ct = train(price ~ ., data = tms.og, subset = tms.train, 
+                            method = "leapBackward", trControl = fitControl)
+
+# View summary information
+tms.train.bwd.m1.ct
+coef(tms.train.bwd.m1.ct$finalModel, tms.train.bwd.m1.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.bwd.m1.ct)
+plot(varImp(tms.train.bwd.m1.ct))
+
+#------------------
+# lm | price
+#------------------
+tms.train.bwd.m1.lm.1 = lm(price ~ carat + color_I + color_J, 
+                           data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.bwd.m1.lm.1)
+AIC(tms.train.bwd.m1.lm.1)
+vif(tms.train.bwd.m1.lm.1)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.bwd.m1.lm.1, ask = F)
+par(mfrow=c(1, 1))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.bwd.m1.lm.2 = lm(log(price) ~ carat + color_I + color_J, 
+                           data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.bwd.m1.lm.2)
+AIC(tms.train.bwd.m1.lm.2)
+vif(tms.train.bwd.m1.lm.2)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.bwd.m1.lm.2, ask = F)
+par(mfrow=c(1, 1))
+```
+
+The first model built used original variables in the `TMS` dataset, and was fit to the training set using backward selection. 
+
+The model chose variables `carat`, `color_I`, and `color_J` (specific levels are to the right of the underscore). The model resulted in an `AIC` value of `5399.672`, and all `VIF` values were close to 1.0. The residual plots from this model are shown in __Figure 8__ below.
+
+\begin{center}
+Figure 8: Residual Plots of Model 1
+\end{center}
+
+```{r MB3, echo = F, fig.height = 6.5}
+par(mfrow=c(2, 2))
+plot(tms.train.bwd.m1.lm.1, ask = F)
+par(mfrow=c(1, 1))
+```
+
+The upper left plot in __Figure 8__ shows a slight bow shape in the residuals, indicating heteroscedasticity. The Q-Q plot shows heavy deviation from the theoretical normal distribution in the tails, particularly the upper tail. _A natural log transformation on the response variable may resolve this issue_. 
+
+Using the same chosen predictor variables, another model was run using a natural log transformation on the response variable `price`. The model resulted in an `AIC` value of `125.8216`, and all `VIF` values were close to 1.0. The `AIC` value _is not_ comparable to the value above. The residual plots from this model are shown in __Figure 9__ below.
+
+\begin{center}
+Figure 9: Residual Plots of Model 1, Natural Log Response
+\end{center}
+
+```{r MB4, echo = F, fig.height = 6.5}
+par(mfrow=c(2, 2))
+plot(tms.train.bwd.m1.lm.2, ask = F)
+par(mfrow=c(1, 1))
+```
+
+Improvement in fit is seen across all plots. While not wholly remedied, the dispersement of residuals in __Figure 9__ are much more homoscedastic than __Figure 8__. Similarly, while the Q-Q plot in is not perfect, the deviance in the tails is largely improved.
+
+_Conclusion_: The initial results suggest a natural log transformation of the response variable may be beneficial to model fit. Subsequent models for EDA use `AVS` on a natural log transformation of the response variable. 
+
+Two points to keep in mind:
+
+* The examination of residuals is more appropriate for statistical models built for inference, not predictive accuracy. 
+* If the response variable `price` is transformed using natural log, then the predicted values must be exponentiated to return them to the correct units.
+
+### Model 2: 
+_Original Variables, Training Set, Backward Selection, Natural Log Response_
+
+```{r MB5, include = F, warning = F}
+#--------------------------------------
+# Model 2
+#--------------------------------------
+# Original Variables, Training Set, Backward Selection, Natural Log Response
+
+#------------------
+# leapBackward
+#------------------
+set.seed(123)
+tms.train.bwd.m2.ct = train(log(price) ~ ., data = tms.og, subset = tms.train, 
+                            method = "leapBackward", trControl = fitControl)
+
+# View summary information
+tms.train.bwd.m2.ct
+coef(tms.train.bwd.m2.ct$finalModel, tms.train.bwd.m2.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.bwd.m2.ct)
+plot(varImp(tms.train.bwd.m2.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.bwd.m2.lm = lm(log(price) ~ carat + color_I + color_J + clarity_I1,
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.bwd.m2.lm)
+AIC(tms.train.bwd.m2.lm)
+vif(tms.train.bwd.m2.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.bwd.m2.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+The second model built used original variables in the `TMS` dataset, and was fit to the training set using backward selection with a natural log transformation on the response variable. 
+
+The model chose variables `carat`, `color_I`, `color_J`, and `clarity_I1` (specific levels are to the right of the underscore). The model resulted in an `AIC` value of `105.4516`, and all `VIF` values were close to 1.0. The residual plots from this model are shown in __Figure 10__ below.
+
+\begin{center}
+Figure 10: Residual Plots of Model 2, Natural Log Response
+\end{center}
+
+```{r MB6, echo = F, fig.height = 6.5}
+par(mfrow=c(2, 2))
+plot(tms.train.bwd.m2.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+_Conclusion_: Compared to `Model 1` (with the same natural log response variable), the fit appears to marginally improve throughout all four plots. The residuals show slightly better dispersion, and the Q-Q plot shows slightly closer fit to the theoretical normal distribution line. The `AIC` value is much lower.
+
+### Model 3: 
+_Original Variables, Training Set, Forward Selection, Natural Log Response_
+
+```{r MB7, include = F, warning = F}
+#--------------------------------------
+# Model 3
+#--------------------------------------
+# Original Variables, Training Set, Forward Selection, Natural Log Response
+
+#------------------
+# leapForward
+#------------------
+set.seed(123)
+tms.train.fwd.m1.ct = train(log(price) ~ ., data = tms.og, subset = tms.train, 
+                            method = "leapForward", trControl = fitControl)
+
+# View summary information
+tms.train.fwd.m1.ct
+coef(tms.train.fwd.m1.ct$finalModel, tms.train.fwd.m1.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.fwd.m1.ct)
+plot(varImp(tms.train.fwd.m1.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.fwd.m1.lm = lm(log(price) ~ carat + color_I + color_J + clarity_I1, 
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.fwd.m1.lm)
+AIC(tms.train.fwd.m1.lm)
+vif(tms.train.fwd.m1.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.fwd.m1.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+The third model built used original variables in the `TMS` dataset, and was fit to the training set using forward selection with a natural log transformation on the response variable. 
+
+The model chose variables `carat`, `color_I`, `color_J`, and `clarity_I1` (specific levels are to the right of the underscore). These are the exact same variables as `Model 2` above. As a result, the `AIC` and `VIF` values are identical, as are the resulting residual plots. They are not shown here to avoid redundancy.
+
+### Model 4: 
+_Original Variables, Training Set, Stepwise Selection, Natural Log Response_
+
+```{r MB8, include = F, warning = F}
+#--------------------------------------
+# Model 4
+#--------------------------------------
+# Original Variables, Training Set, Stepwise Selection, Natural Log Response
+
+#------------------
+# leapSeq
+#------------------
+set.seed(123)
+tms.train.seq.m1.ct = train(log(price) ~ ., data = tms.og, subset = tms.train, 
+                            method = "leapSeq", trControl = fitControl)
+
+# View summary information
+tms.train.seq.m1.ct
+coef(tms.train.seq.m1.ct$finalModel, tms.train.seq.m1.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.seq.m1.ct)
+plot(varImp(tms.train.seq.m1.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.seq.m1.lm = lm(log(price) ~ carat + color_I + color_J + color_L, 
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.seq.m1.lm)
+AIC(tms.train.seq.m1.lm)
+vif(tms.train.seq.m1.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.seq.m1.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+The fourth model built used original variables in the `TMS` dataset, and was fit to the training set using stepwise (sequential replacement) selection with a natural log transformation on the response variable. 
+
+The model chose variables `carat`, `color_I`, `color_J`, and `color_L` (specific levels are to the right of the underscore). The model resulted in an `AIC` value of `105.1677`, and all `VIF` values were close to 1.0. The residual plots from this model are shown in __Figure 11__ below.
+
+\begin{center}
+Figure 11: Residual Plots of Model 4, Natural Log Response
+\end{center}
+
+```{r MB9, echo = F, fig.height = 6.5}
+par(mfrow=c(2, 2))
+plot(tms.train.seq.m1.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+_Conclusion_: Compared to `Model 1` (with the same natural log response variable) and `Model 2`, the fit appears to marginally improve throughout all four plots. The residuals show slightly _less_ dispersion, but are closer to the zero-bound. The Q-Q plot shows slightly closer fit to the theoretical normal distribution line. The `AIC` value lower, although not by much.
+
+### Model 5: 
+_Original Variables, Training Set, AIC Stepwise Selection, Natural Log Response_
+
+```{r MB10, include = F, warning = F}
+#--------------------------------------
+# Model 5
+#--------------------------------------
+# Original Variables, Training Set, AIC Stepwise Selection, Natural Log Response
+
+#------------------
+# lmStepAIC
+#------------------
+set.seed(123)
+tms.train.aic.m1.ct = train(log(price) ~ ., data = tms.og, subset = tms.train, 
+                            method = "lmStepAIC", trControl = fitControl)
+
+# View summary information
+tms.train.aic.m1.ct
+coef(tms.train.aic.m1.ct$finalModel, tms.train.aic.m1.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.aic.m1.ct)
+plot(varImp(tms.train.aic.m1.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.aic.m1.lm = lm(log(price) ~ carat + color_E + color_F + color_G 
+                         + color_H + color_I + color_J + color_K + color_L 
+                         + clarity_VVS1 + clarity_VVS2 + clarity_VS1 
+                         + clarity_VS2 + clarity_SI1 + clarity_SI2 + clarity_I1 
+                         + clarity_I2 + cut_Not_Ideal + channel_Internet 
+                         + channel_Mall + store_Ausmans + store_Fred_Meyer
+                         + store_Goodmans, 
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.aic.m1.lm)
+AIC(tms.train.aic.m1.lm)
+vif(tms.train.aic.m1.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.aic.m1.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+The fifth model built used original variables in the `TMS` dataset, and was fit to the training set using AIC stepwise selection with a natural log transformation on the response variable. _Note_: this method was used as exhaustive search continually hung in `R`.
+
+The model shows signs of serious overfitting. The model chose a plethora of variables: `carat`, `color_E`, `color_F`, `color_G`, `color_H`, `color_I`, `color_J`, `color_K`, `color_L`, `clarity_VVS1`, `clarity_VVS2`, `clarity_VS1`, `clarity_VS2`, `clarity_SI1`, `clarity_SI2`, `clarity_I1`, `clarity_I2`, `cut_Not_Ideal`, `channel_Internet`, `channel_Mall`, `store_Ausmans`, `store_Fred_Meyer`, and `store_Goodmans` (specific levels are to the right of the underscore). 
+
+Not surprisingly, the model had the lowest `AIC` value, at `-2.3131`. However, the `VIF` values show clear multicollinearity issues. Variables with a `VIF` of `3.0` or higher include: `color_G`, `color_H`, `color_I`, `color_K`, `clarity_VVS2`, `clarity_VS1`, `clarity_VS2`, `clarity_SI1`, `clarity_SI1`, `clarity_I1`, `clarity_I2`, `channel_Internet`, and `channel_Mall`.
+
+Residual plots from the model are shown in __Figure 12__ below.
+
+\begin{center}
+Figure 12: Residual Plots of Model 5, Natural Log Response
+\end{center}
+
+```{r MB11, echo = F, fig.height = 6.5}
+par(mfrow=c(2, 2))
+plot(tms.train.aic.m1.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+_Conclusion_: The residual plots show clear overfitting with this method. In the upper left plot, the residuals take on an inverted bow shape. While the Q-Q plot has the closest fit to the theoretical normal distribution, the model is clearly too complex. This is how woodchipper models are created.
+
+### Model 6: 
+_Original Variables, Training Set, LASSO, Natural Log Response_
+
+```{r MB12, include = F, warning = F}
+#--------------------------------------
+# Model 6
+#--------------------------------------
+# Original Variables, Training Set, LASSO, Natural Log Response
+
+#------------------
+# LASSO
+#------------------
+set.seed(123)
+tms.train.lso.m1 = train(log(price) ~ ., data = tms.og, subset = tms.train, 
+                         method = "lasso", trControl = fitControl)
+
+# View summary information
+tms.train.lso.m1
+predict.enet(tms.train.lso.m1$finalModel, type = "coefficients", 
+             s = tms.train.lso.m1$bestTune$fraction, mode = "fraction")
+
+# View variable importance
+varImp(tms.train.lso.m1)
+plot(varImp(tms.train.lso.m1))
+```
+
+The sixth model built used original variables in the `TMS` dataset, and was fit to the training set using LASSO with a natural log transformation on the response variable.
+
+The selected model used all variables, with the exception of the following levels: `color_D`, `clarity_IF`, `cut_Ideal`, `channel_Internet`, `store_Danford`, `store_Ashford`, and `store_Riddles`. The levels the model excluded are `n-1` of the total levels, with the exception of `store`, where additional levels were excluded. No variable coefficients were set to zero. 
+
+## Variable Derivations & Manipulations
+
+```{r MB13, include = F}
+#--------------------------------------
+# Derivations
+#--------------------------------------
+
+# Internet
+tms$IV_Internet = as.factor(ifelse(tms.og$channel == "Internet", 1, 0))
+tms.mod$IV_Internet = tms$IV_Internet
+
+# Store
+tms$IV_Blue_Nile = as.factor(ifelse(tms.og$store == "Blue_Nile", 1, 0))
+tms.mod$IV_Blue_Nile = tms$IV_Blue_Nile
+
+# Colors
+tms$IV_Color_IJ = as.factor(ifelse(tms.og$color == "I" | tms.og$color == "J",
+                                   1, 0))
+tms.mod$IV_Color_IJ = tms$IV_Color_IJ
+```
+
+A number of variable derivations and manipulations were tried, almost all did not show much promise. For instance, standardizing the variable `carat` to mean = `0` and standard deviation = `1` had little to no impact on the model. Another thought was to create a variable akin to "price per carat", but `price` is the response variable, and this would not be correct.
+
+Ultimately, three indicator variables were created based on the frequency of levels:
+
+* `IV_Internet`: value of 1 for being from `channel` Internet, and 0 if not;
+* `IV_Blue_Nile`: value of 1 for being from `store` Blue_Nile, and 0 if not;
+* `IV_Color_IJ`: value of 1 for being of `color` I _or_ J, and 0 if not.
+
+These variables were tested in model construction. 
+
+## Model Construction
+
+Four models were built using information gleaned from the previous sections. Each model has a dedicated subsection:
+
+* Linear Regression Model - No Interactions;
+* Linear Regression Model - Some Interactions;
+* Decision Tree Model;
+* Random Forest Model.
+
+Additionally, each model uses the response variable `price` with a natural log transformation.
+
+### Linear Regression Model - No Interactions
+
+```{r MB14, include = F}
+#--------------------------------------
+# Model 7
+#--------------------------------------
+# Linear Regression Model - No Interactions
+
+#------------------
+# leapSeq
+#------------------
+set.seed(123)
+tms.train.seq.m2.ct = train(log(price) ~ ., data = tms.mod, subset = tms.train, 
+                            method = "leapSeq", trControl = fitControl)
+
+# View summary information
+tms.train.seq.m2.ct
+coef(tms.train.seq.m2.ct$finalModel, tms.train.seq.m2.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.seq.m2.ct)
+plot(varImp(tms.train.seq.m2.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.seq.m2.lm = lm(log(price) ~ carat + clarity_I1 + channel_Mall 
+                         + IV_Color_IJ, 
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.seq.m2.lm)
+AIC(tms.train.seq.m2.lm)
+vif(tms.train.seq.m2.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.seq.m2.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+The same two-step process described at the beginning of the _Model-based EDA_ subsection was used. However, the data fed to the initial model included the three user-created indicator variables. The model was fit to the training set using stepwise (sequential replacement) selection. 
+
+The seventh model chose variables `carat`, `clarity_I1`, `channel_Mall`, and `IV_Color_IJ` (specific levels are to the right of the underscore). The model resulted in an `AIC` value of `86.9924`, and most `VIF` values were close to 1.0, with the highest approximating 1.25. The residual plots from this model are shown in __Figure 12__ below.
+
+\begin{center}
+Figure 12: Residual Plots of Model 7, Natural Log Response
+\end{center}
+
+```{r MB15, echo = F, fig.height = 6.5}
+par(mfrow=c(2, 2))
+plot(tms.train.seq.m2.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+_Conclusion_: Compared to the previous models (with the same natural log response variable), the plots give mixed results. The residuals are starting to take on an inverted bow shape, but are not quite worrisome (yet). The Q-Q plot shows slightly closer fit to the theoretical normal distribution line. The biggest improvement was to the `AIC` value, decreasing from `105.4516` in `Model 2` to `86.9924` here.
+
+### Linear Regression Model - Some Interactions
+
+```{r MB16, include = F}
+#--------------------------------------
+# Model 8
+#--------------------------------------
+# Linear Regression Model - Some Interactions
+
+#------------------
+# leapSeq
+#------------------
+set.seed(123)
+tms.train.seq.m3.ct = train(log(price) ~ .*., 
+                            data = tms.mod, subset = tms.train, 
+                            method = "leapSeq", trControl = fitControl)
+
+# View summary information
+tms.train.seq.m3.ct
+coef(tms.train.seq.m3.ct$finalModel, tms.train.seq.m3.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.seq.m3.ct)
+plot(varImp(tms.train.seq.m3.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.seq.m3.lm = lm(log(price) ~ carat + color_H*clarity_VS1 
+                         + clarity_I1*cut_Not_Ideal 
+                         + clarity_SI2*store_Riddles, 
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.seq.m3.lm)
+AIC(tms.train.seq.m3.lm)
+vif(tms.train.seq.m3.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.seq.m3.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+The same two-step process described at the beginning of the _Model-based EDA_ subsection was used. However, the data fed to the initial model included the three user-created indicator variables. The model was fit to the training set using stepwise (sequential replacement) selection. 
+
+The eighth model chose variables `carat`, and interactions `color_H:clarity_VS1`, `clarity_I1:cut_Not_Ideal`, and `clarity_SI2:store_Riddles` (specific levels are to the right of the underscore). The model resulted in an `AIC` value of `152.4542`. Only two `VIF` values were greater than 3.0: `clarity_I1` and the interaction `clarity_I1:cut_Not_Ideal`. This is not surprising and the multicollinearity is clear. The residual plots from this model are shown in __Figure 13__ below.
+
+\begin{center}
+Figure 13: Residual Plots of Model 8, Natural Log Response
+\end{center}
+
+```{r MB17, echo = F, fig.height = 6.5}
+par(mfrow=c(2, 2))
+plot(tms.train.seq.m3.lm, ask = F)
+par(mfrow=c(1, 1))
+```
+
+_Conclusion_: Compared to `Model 7` (with the same natural log response variable), the plots are slightly improved. The residuals appear more homoscedastic with clustering, but no discernible shape. The Q-Q plot shows slightly closer fit to the theoretical normal distribution line. However, the biggest downside was the jump in the `AIC` value, increasing from `86.9924` in `Model 7` to `152.4542` here.
+
+### Decision Tree Model
+
+```{r MB18, include = F}
+#--------------------------------------
+# Model 9
+#--------------------------------------
+# Decision Tree Model
+
+#------------------
+# M5
+#------------------
+set.seed(123)
+tms.train.dt.m1.ct = train(log(price) ~ .,
+                           data = tms.mod, subset = tms.train, 
+                           method = "M5", trControl = fitControl)
+
+# View summary information
+tms.train.dt.m1.ct
+tms.train.dt.m1.ct$finalModel
+plot(tms.train.dt.m1.ct$finalModel)
+```
+
+The ninth model continued to use the `{caret}` package with repeated cross-validation (10 folds, repeated 3 times). The decision tree was fit with the `M5` method from the `RWeka` package. The algorithm is suitable for regression problems. Minimizing `RMSE` was used as the metric for "best" model selection.
+
+The decision tree with the lowest `RMSE` value was `pruned`, `smoothed`, and did not use `rules`. According to the `RWeka` documentation, the `M5Rules` parameter turns the "best" leaf into rules. __Figure 14__ below shows rules are not used as each terminal node contains a separate model.
+
+\begin{center}
+Figure 14: Decision Tree of Model 9, Natural Log Response
+\end{center}
+
+```{r MB19, echo = F, fig.height = 6.5}
+plot(tms.train.dt.m1.ct$finalModel)
+```
+
+In __Figure 14__ above, the root node splits on the variable `carat`, with values less than or equal to `0.765` going to the left branch, and values greater than `0.765` going to the right. The two terminal nodes each contain a different model (rules). 
+
+### Random Forest Model
+
+```{r MB20, include = F}
+#--------------------------------------
+# Model 10
+#--------------------------------------
+# Random Forest Model
+
+#------------------
+# rf
+#------------------
+set.seed(123)
+tms.train.rf.m1.ct = train(log(price) ~ .,
+                           data = tms.mod, subset = tms.train, 
+                           method = "rf", trControl = fitControl)
+
+# View summary information
+tms.train.rf.m1.ct
+tms.train.rf.m1.ct$finalModel
+plot(tms.train.rf.m1.ct$finalModel)
+```
+
+The tenth model continued to use the `{caret}` package with repeated cross-validation (10 folds, repeated 3 times). The random forest was fit with the `rf` method from the `randomForest` package. The algorithm is suitable for regression problems. Minimizing `RMSE` was used as the metric for "best" model selection.
+
+The random forest with the lowest `RMSE` value used `500` trees and tried `18` variables at each split. __Figure 15__ below shows the decrease in error as the number of trees increases.
+
+\begin{center}
+Figure 15: Random Forest Error of Model 10, Natural Log Response
+\end{center}
+
+```{r MB21, echo = F}
+plot(tms.train.rf.m1.ct$finalModel)
+```
+
+# Model Comparison
+
+This section compares the fit on the four models built in the _Model Construction_ subsection. Both in-sample and out-of-sample fit is assessed. __Table 7__ below shows a comparison of model fit using `RMSE`. The last column represents the percent change in `RMSE` between training and test data.
+
+\begin{center}
+Table 7: Comparison of Model Fit by Type
+\end{center}
+
+```{r MC1, echo = F}
+#==============================================================================
+# Model Comparison
+#==============================================================================
+
+#--------------------------------------
+# Model 7
+#--------------------------------------
+
+# Predict
+tms.train.seq.m2.pred = predict(tms.train.seq.m2.ct, 
+                                newdata = tms.mod[tms.test,])
+
+# Store RMSE values
+m7.train.rmse = getTrainPerf(tms.train.seq.m2.ct)[1, 1]
+m7.test.rmse = as.numeric(postResample(tms.train.seq.m2.pred, 
+                                       log(tms$price)[tms.test])[1])
+
+#--------------------------------------
+# Model 8
+#--------------------------------------
+
+# Predict
+tms.train.seq.m3.pred = predict(tms.train.seq.m3.ct, 
+                                newdata = tms.mod[tms.test,])
+
+# Store RMSE values
+m8.train.rmse = getTrainPerf(tms.train.seq.m3.ct)[1, 1]
+m8.test.rmse = as.numeric(postResample(tms.train.seq.m3.pred, 
+                                       log(tms$price)[tms.test])[1])
+
+#--------------------------------------
+# Model 9
+#--------------------------------------
+
+# Predict
+tms.train.dt.m1.pred = predict(tms.train.dt.m1.ct, 
+                                newdata = tms.mod[tms.test,])
+
+# Store RMSE values
+m9.train.rmse = getTrainPerf(tms.train.dt.m1.ct)[1, 1]
+m9.test.rmse = as.numeric(postResample(tms.train.dt.m1.pred, 
+                                       log(tms$price)[tms.test])[1])
+
+#--------------------------------------
+# Model 10
+#--------------------------------------
+
+# Predict
+tms.train.rf.m1.pred = predict(tms.train.rf.m1.ct, 
+                                newdata = tms.mod[tms.test,])
+
+# Store RMSE values
+m10.train.rmse = getTrainPerf(tms.train.rf.m1.ct)[1, 1]
+m10.test.rmse = as.numeric(postResample(tms.train.rf.m1.pred, 
+                                       log(tms$price)[tms.test])[1])
+
+#--------------------------------------
+# Table Results
+#--------------------------------------
+# Function to calculate percent change
+perc.change = function(y1, y2){
+    return((y2 - y1) / y1)
+}
+
+# Model Names
+model.names = rbind("M7: Linear Regression, no interactions",
+                    "M8: Linear Regression, some interactions", 
+                    "M9: Decision Tree, M5 algorithm", 
+                    "M10: Random Forest, RF algorithm")
+
+# RMSE, Train
+model.train.rmse = rbind(m7.train.rmse, m8.train.rmse, m9.train.rmse, 
+                         m10.train.rmse)
+
+# RMSE, Test
+model.test.rmse = rbind(m7.test.rmse, m8.test.rmse, m9.test.rmse, 
+                        m10.test.rmse)
+
+# RMSE, Percent Change
+model.pc = rbind(perc.change(m7.train.rmse, m7.test.rmse), 
+                 perc.change(m8.train.rmse, m8.test.rmse), 
+                 perc.change(m9.train.rmse, m9.test.rmse), 
+                 perc.change(m10.train.rmse, m10.test.rmse))
+
+# Data Frame
+model.comp = data.frame(model.names, model.train.rmse, model.test.rmse, 
+                        model.pc)
+rownames(model.comp) = 1:nrow(model.comp)
+colnames(model.comp) = c("Model Name", "RMSE, Train", "RMSE, Test", 
+                         "Percent Change")
+
+# Output
+pander(model.comp, caption = "", justify = "left")
+```
+
+By `RMSE`, the random forest model (`Model 10`) was the clear winner with the lowest `RMSE` values in both the training and test set. Interestingly, it also had the largest percent change, predicting with a lower `RMSE` on the test set than on the train set. In second place was the decision tree model (`Model 9`), which used the `M5` algorithm.
+
+# Conclusion & Next Steps
+
+While random forest models may be "black boxes", the predictive accuracy on the `TMS` dataset is clear. The decision tree model using the `M5` algorithm also came quite close in terms of performance to the random forest model. This was a bit surprising.
+
+Prior to this assignment, I did not have an opportunity to use the `{caret}` package. I presume the performance was enhanced by using repeated cross-validation (10 fold, 3 repeats) on the training set for all models. I also had not used the `M5` algorithm from `{RWeka}` before, and was surprised to learn each terminal node contained a different model. 
+
+For next steps, I would like to play with the hyperparameter settings to see how tuning them affects the various models. Although the decision tree model came in second place, the interpretability cannot be overlooked. This goes back to answering what we are solving for, and why. If the goal is to have the most accurate predictive model, then random forest is the clear winner. If the goal is to have the most accurate _and interpretable_ predictive model, the decision tree model would take the trophy.
+
+\pagebreak
+
+## Appendix - Relevant R Code
+
+```{r Appendix, eval = F}
+#==============================================================================
+# Functions
+#==============================================================================
+# Create function to source functions from GitHub
+source.GitHub = function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", 
+                                          "cacert.pem", package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url = "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+
+#==============================================================================
+# Data Import, Prep, and Staging
+#==============================================================================
+
+#--------------------------------------
+# Import
+#--------------------------------------
+# Read data
+tms = read.csv("~/Two_Months_Salary.csv", header = T)
+
+# Check dimensions
+dim(tms)
+
+# Check variable classes
+sapply(tms, class)
+
+# Summary statistics
+summary(tms)
+
+# Check for NAs
+colSums(is.na(tms))[colSums(is.na(tms)) > 0]
+
+#--------------------------------------
+# Prep
+#--------------------------------------
+# Recode integers to numeric
+tms$price = as.numeric(tms$price)
+
+# Recode integers to factor
+tms$color = as.factor(tms$color)
+tms$clarity = as.factor(tms$clarity)
+
+# Set factor variable levels
+levels(tms$color) = c("D", "E", "F", "G", "H", "I", "J", "K", "L")
+levels(tms$clarity) = c("IF", "VVS1", "VVS2", "VS1", "VS2", "SI1", "SI2", 
+                        "I1", "I2")
+
+# Rename factor variable levels (replace spaces)
+levels(tms$store) = c("Ashford", "Ausmans", "Blue_Nile", "Chalmers", 
+                      "Danford", "Fred_Meyer", "Goodmans", "Kay", 
+                      "R_Holland", "Riddles", "University", "Zales")
+levels(tms$cut) = c("Ideal", "Not_Ideal")
+
+#--------------------------------------
+# Staging
+#--------------------------------------
+# Store dataset name for use in titles, etc. later
+data.name <- "tms$"
+
+# Set response variable
+data.response <- "price"
+
+# Assign column names
+tms.cn.all = colnames(tms)
+
+# Assign numeric column names
+tms.cn.num = colnames(tms[, !sapply(tms, is.factor)])
+
+# Assign factor column names
+tms.cn.fac = colnames(tms[, sapply(tms, is.factor)])
+
+# Drop response variable in tms.cn.num
+tms.cn.num = tms.cn.num[!tms.cn.num == data.response]
+
+#--------------------------------------
+# Dictionary
+#--------------------------------------
+# Build table
+tms.dict = as.data.frame(sapply(tms, class))
+tms.def = c("Weight of diamond in carats (1 carat = 200mg)", 
+            "GIA color scale, standardized for grading", 
+            "GIA visibility scale, number and size of inclusions", 
+            "Binary, defined by creator of dataset", 
+            "Medium of purchase", 
+            "Name of store (company) selling diamond", 
+            "Cost in U.S. dollars, April 2001")
+tms.dict = data.frame(rownames(tms.dict), tms.dict, tms.def)
+colnames(tms.dict) = c("Variable", "Class", "Definition")
+rownames(tms.dict) = 1:nrow(tms.dict)
+rm(tms.def)
+
+#==============================================================================
+# Exploratory Data Analysis
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Traditional EDA - Quantitative
+#------------------------------------------------------------------------------
+num.freq(tms, tms.cn.fac, "price")
+num.freq(tms, tms.cn.fac, "carat")
+fac.freq(tms, tms.cn.fac, cat = F)
+
+#------------------------------------------------------------------------------
+# Traditional EDA - Qualitative
+#------------------------------------------------------------------------------
+num.plots(tms, tms.cn.num, "price")
+fac.boxplot(tms, tms.cn.fac, "price")
+fac.boxplot(tms, tms.cn.fac, "carat")
+fac.barplot(tms, tms.cn.fac)
+
+#------------------------------------------------------------------------------
+# Decision Tree EDA
+#------------------------------------------------------------------------------
+fancyRpartPlot(rpart(tms$price ~ ., data = tms), sub = "", cex = 0.8)
+
+#==============================================================================
+# Model Build
+#==============================================================================
+
+# Random sample into 70/30 training-test split
+set.seed(123)
+tms.train = createDataPartition(tms$price, p = 0.70, list = F)
+tms.test = as.matrix(as.integer(rownames(tms))[-tms.train])
+
+# Specify fit parameters
+set.seed(123)
+fitControl = trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+#------------------------------------------------------------------------------
+# Variable Derivations & Manipulations
+#------------------------------------------------------------------------------
+
+# Create clone versions of data.frame
+tms.og = tms
+tms.mod = tms
+
+#--------------------------------------
+# Levels
+#--------------------------------------
+
+# Create levels
+tms = fac.flag(tms, tms.cn.fac)
+
+# Drop original variables
+tms = tms[, !names(tms) %in% tms.cn.fac]
+
+# Re-assign factor column names
+tms.cn.fac = colnames(tms[, sapply(tms, is.factor)])
+
+#--------------------------------------
+# Derivations
+#--------------------------------------
+
+# Internet
+tms$IV_Internet = as.factor(ifelse(tms.og$channel == "Internet", 1, 0))
+tms.mod$IV_Internet = tms$IV_Internet
+
+# Store
+tms$IV_Blue_Nile = as.factor(ifelse(tms.og$store == "Blue_Nile", 1, 0))
+tms.mod$IV_Blue_Nile = tms$IV_Blue_Nile
+
+# Colors
+tms$IV_Color_IJ = as.factor(ifelse(tms.og$color == "I" | tms.og$color == "J",
+                                   1, 0))
+tms.mod$IV_Color_IJ = tms$IV_Color_IJ
+
+#------------------------------------------------------------------------------
+# Model-based EDA
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 1
+#--------------------------------------
+# Original Variables, Training Set, Backward Selection
+
+#------------------
+# leapBackward
+#------------------
+set.seed(123)
+tms.train.bwd.m1.ct = train(price ~ ., data = tms.og, subset = tms.train, 
+                            method = "leapBackward", trControl = fitControl)
+
+# View summary information
+tms.train.bwd.m1.ct
+coef(tms.train.bwd.m1.ct$finalModel, tms.train.bwd.m1.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.bwd.m1.ct)
+plot(varImp(tms.train.bwd.m1.ct))
+
+#------------------
+# lm | price
+#------------------
+tms.train.bwd.m1.lm.1 = lm(price ~ carat + color_I + color_J, 
+                           data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.bwd.m1.lm.1)
+AIC(tms.train.bwd.m1.lm.1)
+vif(tms.train.bwd.m1.lm.1)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.bwd.m1.lm.1, ask = F)
+par(mfrow=c(1, 1))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.bwd.m1.lm.2 = lm(log(price) ~ carat + color_I + color_J, 
+                           data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.bwd.m1.lm.2)
+AIC(tms.train.bwd.m1.lm.2)
+vif(tms.train.bwd.m1.lm.2)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.bwd.m1.lm.2, ask = F)
+par(mfrow=c(1, 1))
+
+#--------------------------------------
+# Model 2
+#--------------------------------------
+# Original Variables, Training Set, Backward Selection, Natural Log Response
+
+#------------------
+# leapBackward
+#------------------
+set.seed(123)
+tms.train.bwd.m2.ct = train(log(price) ~ ., data = tms.og, subset = tms.train, 
+                            method = "leapBackward", trControl = fitControl)
+
+# View summary information
+tms.train.bwd.m2.ct
+coef(tms.train.bwd.m2.ct$finalModel, tms.train.bwd.m2.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.bwd.m2.ct)
+plot(varImp(tms.train.bwd.m2.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.bwd.m2.lm = lm(log(price) ~ carat + color_I + color_J + clarity_I1,
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.bwd.m2.lm)
+AIC(tms.train.bwd.m2.lm)
+vif(tms.train.bwd.m2.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.bwd.m2.lm, ask = F)
+par(mfrow=c(1, 1))
+
+#--------------------------------------
+# Model 3
+#--------------------------------------
+# Original Variables, Training Set, Forward Selection, Natural Log Response
+
+#------------------
+# leapForward
+#------------------
+set.seed(123)
+tms.train.fwd.m1.ct = train(log(price) ~ ., data = tms.og, subset = tms.train, 
+                            method = "leapForward", trControl = fitControl)
+
+# View summary information
+tms.train.fwd.m1.ct
+coef(tms.train.fwd.m1.ct$finalModel, tms.train.fwd.m1.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.fwd.m1.ct)
+plot(varImp(tms.train.fwd.m1.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.fwd.m1.lm = lm(log(price) ~ carat + color_I + color_J + clarity_I1, 
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.fwd.m1.lm)
+AIC(tms.train.fwd.m1.lm)
+vif(tms.train.fwd.m1.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.fwd.m1.lm, ask = F)
+par(mfrow=c(1, 1))
+
+#--------------------------------------
+# Model 4
+#--------------------------------------
+# Original Variables, Training Set, Stepwise Selection, Natural Log Response
+
+#------------------
+# leapSeq
+#------------------
+set.seed(123)
+tms.train.seq.m1.ct = train(log(price) ~ ., data = tms.og, subset = tms.train, 
+                            method = "leapSeq", trControl = fitControl)
+
+# View summary information
+tms.train.seq.m1.ct
+coef(tms.train.seq.m1.ct$finalModel, tms.train.seq.m1.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.seq.m1.ct)
+plot(varImp(tms.train.seq.m1.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.seq.m1.lm = lm(log(price) ~ carat + color_I + color_J + color_L, 
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.seq.m1.lm)
+AIC(tms.train.seq.m1.lm)
+vif(tms.train.seq.m1.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.seq.m1.lm, ask = F)
+par(mfrow=c(1, 1))
+
+#--------------------------------------
+# Model 5
+#--------------------------------------
+# Original Variables, Training Set, AIC Stepwise Selection, Natural Log Response
+
+#------------------
+# lmStepAIC
+#------------------
+set.seed(123)
+tms.train.aic.m1.ct = train(log(price) ~ ., data = tms.og, subset = tms.train, 
+                            method = "lmStepAIC", trControl = fitControl)
+
+# View summary information
+tms.train.aic.m1.ct
+coef(tms.train.aic.m1.ct$finalModel, tms.train.aic.m1.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.aic.m1.ct)
+plot(varImp(tms.train.aic.m1.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.aic.m1.lm = lm(log(price) ~ carat + color_E + color_F + color_G 
+                         + color_H + color_I + color_J + color_K + color_L 
+                         + clarity_VVS1 + clarity_VVS2 + clarity_VS1 
+                         + clarity_VS2 + clarity_SI1 + clarity_SI2 + clarity_I1 
+                         + clarity_I2 + cut_Not_Ideal + channel_Internet 
+                         + channel_Mall + store_Ausmans + store_Fred_Meyer
+                         + store_Goodmans, 
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.aic.m1.lm)
+AIC(tms.train.aic.m1.lm)
+vif(tms.train.aic.m1.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.aic.m1.lm, ask = F)
+par(mfrow=c(1, 1))
+
+#--------------------------------------
+# Model 6
+#--------------------------------------
+# Original Variables, Training Set, LASSO, Natural Log Response
+
+#------------------
+# LASSO
+#------------------
+set.seed(123)
+tms.train.lso.m1 = train(log(price) ~ ., data = tms.og, subset = tms.train, 
+                         method = "lasso", trControl = fitControl)
+
+# View summary information
+tms.train.lso.m1
+predict.enet(tms.train.lso.m1$finalModel, type = "coefficients", 
+             s = tms.train.lso.m1$bestTune$fraction, mode = "fraction")
+
+# View variable importance
+varImp(tms.train.lso.m1)
+plot(varImp(tms.train.lso.m1))
+
+#------------------------------------------------------------------------------
+# Model Construction
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 7
+#--------------------------------------
+# Linear Regression Model - No Interactions
+
+#------------------
+# leapSeq
+#------------------
+set.seed(123)
+tms.train.seq.m2.ct = train(log(price) ~ ., data = tms.mod, subset = tms.train, 
+                            method = "leapSeq", trControl = fitControl)
+
+# View summary information
+tms.train.seq.m2.ct
+coef(tms.train.seq.m2.ct$finalModel, tms.train.seq.m2.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.seq.m2.ct)
+plot(varImp(tms.train.seq.m2.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.seq.m2.lm = lm(log(price) ~ carat + clarity_I1 + channel_Mall 
+                         + IV_Color_IJ, 
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.seq.m2.lm)
+AIC(tms.train.seq.m2.lm)
+vif(tms.train.seq.m2.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.seq.m2.lm, ask = F)
+par(mfrow=c(1, 1))
+
+#--------------------------------------
+# Model 8
+#--------------------------------------
+# Linear Regression Model - Some Interactions
+
+#------------------
+# leapSeq
+#------------------
+set.seed(123)
+tms.train.seq.m3.ct = train(log(price) ~ .*., 
+                            data = tms.mod, subset = tms.train, 
+                            method = "leapSeq", trControl = fitControl)
+
+# View summary information
+tms.train.seq.m3.ct
+coef(tms.train.seq.m3.ct$finalModel, tms.train.seq.m3.ct$bestTune$nvmax)
+
+# View variable importance
+varImp(tms.train.seq.m3.ct)
+plot(varImp(tms.train.seq.m3.ct))
+
+#------------------
+# lm | log(price)
+#------------------
+tms.train.seq.m3.lm = lm(log(price) ~ carat + color_H*clarity_VS1 
+                         + clarity_I1*cut_Not_Ideal 
+                         + clarity_SI2*store_Riddles, 
+                         data = tms, subset = tms.train)
+
+# View summary information
+summary(tms.train.seq.m3.lm)
+AIC(tms.train.seq.m3.lm)
+vif(tms.train.seq.m3.lm)
+
+# View plots
+par(mfrow=c(2, 2))
+plot(tms.train.seq.m3.lm, ask = F)
+par(mfrow=c(1, 1))
+
+#--------------------------------------
+# Model 9
+#--------------------------------------
+# Decision Tree Model
+
+#------------------
+# M5
+#------------------
+set.seed(123)
+tms.train.dt.m1.ct = train(log(price) ~ .,
+                           data = tms.mod, subset = tms.train, 
+                           method = "M5", trControl = fitControl)
+
+# View summary information
+tms.train.dt.m1.ct
+tms.train.dt.m1.ct$finalModel
+plot(tms.train.dt.m1.ct$finalModel)
+
+#--------------------------------------
+# Model 10
+#--------------------------------------
+# Random Forest Model
+
+#------------------
+# rf
+#------------------
+set.seed(123)
+tms.train.rf.m1.ct = train(log(price) ~ .,
+                           data = tms.mod, subset = tms.train, 
+                           method = "rf", trControl = fitControl)
+
+# View summary information
+tms.train.rf.m1.ct
+tms.train.rf.m1.ct$finalModel
+plot(tms.train.rf.m1.ct$finalModel)
+
+#==============================================================================
+# Model Comparison
+#==============================================================================
+
+#--------------------------------------
+# Model 7
+#--------------------------------------
+
+# Predict
+tms.train.seq.m2.pred = predict(tms.train.seq.m2.ct, 
+                                newdata = tms.mod[tms.test,])
+
+# Store RMSE values
+m7.train.rmse = getTrainPerf(tms.train.seq.m2.ct)[1, 1]
+m7.test.rmse = as.numeric(postResample(tms.train.seq.m2.pred, 
+                                       log(tms$price)[tms.test])[1])
+
+#--------------------------------------
+# Model 8
+#--------------------------------------
+
+# Predict
+tms.train.seq.m3.pred = predict(tms.train.seq.m3.ct, 
+                                newdata = tms.mod[tms.test,])
+
+# Store RMSE values
+m8.train.rmse = getTrainPerf(tms.train.seq.m3.ct)[1, 1]
+m8.test.rmse = as.numeric(postResample(tms.train.seq.m3.pred, 
+                                       log(tms$price)[tms.test])[1])
+
+#--------------------------------------
+# Model 9
+#--------------------------------------
+
+# Predict
+tms.train.dt.m1.pred = predict(tms.train.dt.m1.ct, 
+                                newdata = tms.mod[tms.test,])
+
+# Store RMSE values
+m9.train.rmse = getTrainPerf(tms.train.dt.m1.ct)[1, 1]
+m9.test.rmse = as.numeric(postResample(tms.train.dt.m1.pred, 
+                                       log(tms$price)[tms.test])[1])
+
+#--------------------------------------
+# Model 10
+#--------------------------------------
+
+# Predict
+tms.train.rf.m1.pred = predict(tms.train.rf.m1.ct, 
+                                newdata = tms.mod[tms.test,])
+
+# Store RMSE values
+m10.train.rmse = getTrainPerf(tms.train.rf.m1.ct)[1, 1]
+m10.test.rmse = as.numeric(postResample(tms.train.rf.m1.pred, 
+                                       log(tms$price)[tms.test])[1])
+
+#--------------------------------------
+# Table Results
+#--------------------------------------
+# Function to calculate percent change
+perc.change = function(y1, y2){
+    return((y2 - y1) / y1)
+}
+
+# Model Names
+model.names = rbind("M7: Linear Regression, no interactions",
+                    "M8: Linear Regression, some interactions", 
+                    "M9: Decision Tree, M5 algorithm", 
+                    "M10: Random Forest, RF algorithm")
+
+# RMSE, Train
+model.train.rmse = rbind(m7.train.rmse, m8.train.rmse, m9.train.rmse, 
+                         m10.train.rmse)
+
+# RMSE, Test
+model.test.rmse = rbind(m7.test.rmse, m8.test.rmse, m9.test.rmse, 
+                        m10.test.rmse)
+
+# RMSE, Percent Change
+model.pc = rbind(perc.change(m7.train.rmse, m7.test.rmse), 
+                 perc.change(m8.train.rmse, m8.test.rmse), 
+                 perc.change(m9.train.rmse, m9.test.rmse), 
+                 perc.change(m10.train.rmse, m10.test.rmse))
+
+# Data Frame
+model.comp = data.frame(model.names, model.train.rmse, model.test.rmse, 
+                        model.pc)
+rownames(model.comp) = 1:nrow(model.comp)
+colnames(model.comp) = c("Model Name", "RMSE, Train", "RMSE, Test", 
+                         "Percent Change")
+```
+
+```{r FIN, echo = F}
+# FIN
+sessionInfo()
+```
