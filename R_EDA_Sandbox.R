@@ -321,7 +321,7 @@ fac.mosaic = function(df, list, var){
 # fac.freq()
 #--------------------------------------
 # Frequency of occurence split by named factor for factor variables
-fac.freq = function(df, list, var, cat = T){
+fac.freq = function(df, list, var, cat = T, save = F){
     for (fac in list){
         if (cat){
             name.var = rep(paste(data.name, var, sep = ""),
@@ -338,7 +338,6 @@ fac.freq = function(df, list, var, cat = T){
             colnames(table.results)[1] = "Variable"
             colnames(table.results)[2] = "Split On"
             colnames(table.results)[3] = "Levels"
-            return(table.results)
         }
         if (!cat){
             name.fac = rep(paste(data.name, fac, sep = ""), each = 2)
@@ -351,8 +350,11 @@ fac.freq = function(df, list, var, cat = T){
             table.results = as.data.frame(table.col)
             colnames(table.results)[1] = "Variable"
             colnames(table.results)[2] = "Type"
-            return(table.results)
         }
+        print(table.results)
+    }
+    if (save){
+        return(table.results)
     }
 }
 
