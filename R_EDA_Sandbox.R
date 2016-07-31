@@ -182,8 +182,9 @@ num.plots = function(df, list, var, norm = F, vs = F){
 # num.freq()
 #--------------------------------------
 # Summary statistics split by named factor for numeric variables
-num.freq = function(df, list, var){
-    for (fac in list){
+num.freq = function(df, list, fac){
+    table.results = data.frame()
+    for (var in list){
         name.var = rep(paste(data.name, var, sep = ""),
                        each = nlevels(df[, fac]))
         name.split = rep(paste(data.name, fac, sep = ""),
@@ -191,13 +192,14 @@ num.freq = function(df, list, var){
         table.level = levels(df[, fac])
         table.agg = format(aggregate(df[, var], by = list(Var = df[, fac]),
                                      summary)$x, nsmall = 2)
-        table.results = as.data.frame(cbind(name.var, name.split, 
-                                            table.level, table.agg))
-        colnames(table.results)[1] = "Variable"
-        colnames(table.results)[2] = "Split On"
-        colnames(table.results)[3] = "Levels"
-        return(table.results)
+        table.row = as.data.frame(cbind(name.var, name.split, 
+                                        table.level, table.agg))
+        table.results = rbind(table.results, table.row)
     }
+    colnames(table.results)[1] = "Variable"
+    colnames(table.results)[2] = "Split On"
+    colnames(table.results)[3] = "Levels"
+    return(table.results)
 }
 
 #--------------------------------------
