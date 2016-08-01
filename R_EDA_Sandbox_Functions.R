@@ -70,18 +70,23 @@ miss.flag = function(df, cn = c("num", "fac")){
 # num.boxplot()
 #--------------------------------------
 # Function to create boxplots of numeric variables
-num.boxplot = function(df, list, var, vs = F){
-    for (num in list){
-        if (vs){
-            boxplot(df[, num] ~ df[, var], col = "grey",
-                    main = paste(data.name, num," versus ",
-                                 data.name, var, sep = ""),
+num.boxplot = function(df, df.fac){
+    df.name = deparse(substitute(df))
+    cols = colnames(df[, !sapply(df, is.factor)])
+    for (i in cols){
+        if (missing(df.fac)){
+            boxplot(df[, i], col = "grey",
+                    main = paste("Boxplot of ", df.name, "$", i, sep = ""),
+                    xlab = paste(df.name, "$", i, sep = ""),
                     ylab = "Values")
-        }
-        if (!vs){
-            boxplot(df[, num], col = "grey",
-                    main = paste("Boxplot of ", data.name, num, sep = ""),
-                    xlab = paste(data.name, num, sep = ""),
+        } else if (!class(df.fac) %in% c("factor")){
+            stop("Please supply a factor variable to df.fac")
+        } else {
+            fac = unlist(strsplit(deparse(substitute(df.fac)),
+                                  split = "$", fixed = T))[2]
+            boxplot(df[, i] ~ df[, fac], col = "grey",
+                    main = paste(df.name, "$", i," versus ",
+                                 deparse(substitute(df.fac)), sep = ""),
                     ylab = "Values")
         }
     }
@@ -92,18 +97,30 @@ num.boxplot = function(df, list, var, vs = F){
 #--------------------------------------
 # Function to create histograms of numeric variables
 # Optional choice of normal curve overlay
-num.hist = function(df, list, norm = F){
-    for (num in list){
-        main = paste("Histogram of ", data.name, num, sep = "")
+num.hist = function(df, prob = F, norm = T){
+    df.name = deparse(substitute(df))
+    cols = colnames(df[, !sapply(df, is.factor)])
+    for (i in cols){
+        main = paste("Histogram of ", df.name, "$", i, sep = "")
         sub = ifelse(norm, "normal curve overlay (blue)", "")
-        y = hist(df[, num], plot = F)
-        h = hist(df[, num], col = "grey", main = main, sub = sub,
-                 ylim = c(0, 1.1*max(y$counts)),
-                 xlab = paste(data.name, num, sep = ""))
+        y = hist(df[, i], plot = F)
+        if (prob){
+            seq = seq(0.0, 1.0, by = 0.1)
+            h = hist(df[, i], col = "grey", main = main, sub = sub,
+                     breaks = quantile(df[, i], probs = seq),
+                     xlab = paste(df.name, "$", i, sep = ""))
+        }
+        if (!prob){
+            h = hist(df[, i], col = "grey", main = main, sub = sub,
+                     ylim = c(0, 1.1*max(y$counts)),
+                     xlab = paste(df.name, "$", i, sep = ""))
+        }
         if (norm){
-            xfit = seq(min(df[, num]), max(df[, num]), length = 100)
-            yfit = dnorm(xfit, mean = mean(df[, num]), sd = sd(df[, num]))
-            yfit = yfit * diff(h$mids[1:2]) * length(df[, num])
+            xfit = seq(min(df[, i]), max(df[, i]), length = 100)
+            yfit = dnorm(xfit, mean = mean(df[, i]), sd = sd(df[, i]))
+            if (norm & !prob){
+                yfit = yfit * diff(h$mids[1:2]) * length(df[, i])
+            }
             lines(xfit, yfit, col = "blue", lwd = 2)
         }
     }
@@ -113,11 +130,13 @@ num.hist = function(df, list, norm = F){
 # num.qq()
 #--------------------------------------
 # Function to create Q-Q plots of numeric variables
-num.qq = function(df, list){
-    for (num in list){
-        qqnorm(df[, num], pch = 21, bg = "grey",
-               main = paste("Normal Q-Q Plot of ", data.name, num, sep = ""))
-        qqline(df[, num], lwd = 2, col = "blue")
+num.qq = function(df){
+    df.name = deparse(substitute(df))
+    cols = colnames(df[, !sapply(df, is.factor)])
+    for (i in cols){
+        qqnorm(df[, i], pch = 21, bg = "grey",
+               main = paste("Normal Q-Q Plot of ", df.name, "$", i, sep = ""))
+        qqline(df[, i], lwd = 2, col = "blue")
     }
 }
 
@@ -125,13 +144,17 @@ num.qq = function(df, list){
 # num.scatter()
 #--------------------------------------
 # Function to create scatterplots of numeric variables
-num.scatter = function(df, list, var){
-    for (num in list){
-        plot(df[, num], df[, var], pch = 21, bg = "grey",
-             main = paste(data.name, var, " versus ",
-                          data.name, num, sep = ""),
-             ylab = paste(data.name, var, sep = ""),
-             xlab = paste(data.name, num, sep = ""))
+num.scatter = function(df, df.num){
+    df.name = deparse(substitute(df))
+    num = unlist(strsplit(deparse(substitute(df.num)),
+                          split = "$", fixed = T))[2]
+    cols = colnames(df[, !sapply(df, is.factor)])
+    for (i in cols){
+        plot(df[, i], df[, num], pch = 21, bg = "grey",
+             main = paste(df.name, "$", num, " versus ",
+                          df.name, "$", i, sep = ""),
+             ylab = paste(df.name, "$", num, sep = ""),
+             xlab = paste(df.name, "$", i, sep = ""))
     }
 }
 
@@ -140,13 +163,14 @@ num.scatter = function(df, list, var){
 #--------------------------------------
 # Function to produce four plots per variable:
 #   Scatterplot, Q-Q Plot, Histogram, Boxplot
-num.plots = function(df, list, var, norm = F, vs = F){
+num.plots = function(df, df.num, df.fac, prob = F, norm = T){
     par(mfcol = c(2, 2))
-    for (num in list){
-        num.hist(df, num, norm)
-        num.scatter(df, num, var)
-        num.boxplot(df, num, var, vs)
-        num.qq(df, num)
+    cols = colnames(df[, !sapply(df, is.factor)])
+    for (i in cols){
+        #num.hist(df, prob, norm)
+        num.scatter(df, df.num)
+        #num.boxplot(df, df.fac)
+        #num.qq(df)
     }
     return(par(mfcol = c(1, 1)))
 }
@@ -199,8 +223,8 @@ num.freq = function(df.fac, df.cn){
 num.scale = function(df){
     cols = colnames(df[, !sapply(df, is.factor)])
     for (i in cols){
-        i_scale = paste(i, "scale", sep = "_")
-        df[i_scale] = scale(df[, i])
+        i_cs = paste(i, "cs", sep = "_")
+        df[i_cs] = scale(df[, i])
     }
     return(df)
 }
@@ -230,8 +254,8 @@ num.trans = function(df){
 #--------------------------------------
 # Function to trim numeric variables at various percentiles
 num.trims = function(df){
-    cols = colnames(df[, !sapply(df, is.factor)])
     require(scales)
+    cols = colnames(df[, !sapply(df, is.factor)])
     for (i in cols){
         # 1st and 99th
         T99 = quantile(df[, i], c(0.01, 0.99))
