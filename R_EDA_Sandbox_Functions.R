@@ -25,7 +25,7 @@
 # Function to add MSE to other measures from forecast::accuracy
 fit = function(f, x){
     require(forecast)
-    temp = data.frame(forecast::accuracy(f, x), 
+    temp = data.frame(forecast::accuracy(f, x),
                       forecast::accuracy(f, x)[, 2]^2)
     temp = temp[, -c(1)]
     colnames(temp)[6] <- "MSE"
@@ -41,11 +41,18 @@ fit = function(f, x){
 # miss.flag()
 #--------------------------------------
 # Function to create indicator variables as missing flags
-miss.flag = function(df, list){
-    for (var in list){
-        if (sum(is.na(df[, var])) > 0){
-            df[paste("MF", var, sep = "_")] = 
-                as.factor(ifelse(is.na(df[, var]), 1, 0))
+miss.flag = function(df, cn = c("num", "fac")){
+    if (missing(cn)){
+        cols = colnames(df)
+    } else if (cn == "num"){
+        cols = colnames(df[, !sapply(df, is.factor)])
+    } else if (cn == "fac"){
+        cols = colnames(df[, sapply(df, is.factor)])
+    }
+    for (i in cols){
+        if (sum(is.na(df[, i])) > 0){
+            df[paste("MF", i, sep = "_")] =
+                as.factor(ifelse(is.na(df[, i]), 1, 0))
         }
     }
     return(df)
@@ -121,7 +128,7 @@ num.qq = function(df, list){
 num.scatter = function(df, list, var){
     for (num in list){
         plot(df[, num], df[, var], pch = 21, bg = "grey",
-             main = paste(data.name, var, " versus ", 
+             main = paste(data.name, var, " versus ",
                           data.name, num, sep = ""),
              ylab = paste(data.name, var, sep = ""),
              xlab = paste(data.name, num, sep = ""))
@@ -152,17 +159,30 @@ num.plots = function(df, list, var, norm = F, vs = F){
 # num.freq()
 #--------------------------------------
 # Summary statistics split by named factor for numeric variables
-num.freq = function(df, list, fac){
+num.freq = function(df.fac, df.cn){
+    if (!class(df.fac) %in% c("factor")){
+        stop("Please supply a factor variable to df.fac")
+    }
     table.results = data.frame()
-    for (var in list){
-        name.var = rep(paste(data.name, var, sep = ""),
-                       each = nlevels(df[, fac]))
-        name.split = rep(paste(data.name, fac, sep = ""),
-                         each = nlevels(df[, fac]))
+    df = eval(as.name(paste(unlist(strsplit(deparse(substitute(df.fac)),
+                            split = "$", fixed = T))[1])))
+    fac = unlist(strsplit(deparse(substitute(df.fac)),
+                          split = "$", fixed = T))[2]
+    if (missing(df.cn)){
+        cols = colnames(df[, !sapply(df, is.factor)])
+    } else if (!class(df.cn) %in% c("numeric", "integer")){
+        stop("Please supply a numeric or integer variable to df.cn")
+    } else {
+        cols = unlist(strsplit(deparse(substitute(df.cn)),
+                               split = "$", fixed = T))[2]
+    }
+    for (i in cols){
+        name.var = rep(paste(i), each = nlevels(df[, fac]))
+        name.split = rep(paste(fac), each = nlevels(df[, fac]))
         table.level = levels(df[, fac])
-        table.agg = format(aggregate(df[, var], by = list(Var = df[, fac]),
+        table.agg = format(aggregate(df[, i], by = list(Var = df[, fac]),
                                      summary)$x, nsmall = 2)
-        table.row = as.data.frame(cbind(name.var, name.split, 
+        table.row = as.data.frame(cbind(name.var, name.split,
                                         table.level, table.agg))
         table.results = rbind(table.results, table.row)
     }
@@ -176,33 +196,11 @@ num.freq = function(df, list, fac){
 # num.scale()
 #--------------------------------------
 # Function to scale (normalize: mean = 0, sd = 1) numeric variables
-num.scale = function(df, list){
-    for (num in list){
-        num_scale = paste(num, "scale", sep = "_")
-        df[num_scale] = scale(df[, num])
-    }
-    return(df)
-}
-
-#--------------------------------------
-# num.trims()
-#--------------------------------------
-# Function to trim numeric variables at various percentiles
-num.trims = function(df, list){
-    require(scales)
-    for (num in list){
-        # 1st and 99th
-        T99 = quantile(df[, num], c(0.01, 0.99))
-        df[paste(num, "T99", sep = "_")] = squish(df[, num], T99)
-        # 5th and 95th
-        T95 = quantile(df[, num], c(0.05, 0.95))
-        df[paste(num, "T95", sep = "_")] = squish(df[, num], T95)
-        # 10th and 90th
-        T90 = quantile(df[, num], c(0.10, 0.90))
-        df[paste(num, "T90", sep = "_")] = squish(df[, num], T90)
-        # 25th and 75th
-        T75 = quantile(df[, num], c(0.25, 0.75))
-        df[paste(num, "T75", sep = "_")] = squish(df[, num], T75)
+num.scale = function(df){
+    cols = colnames(df[, !sapply(df, is.factor)])
+    for (i in cols){
+        i_scale = paste(i, "scale", sep = "_")
+        df[i_scale] = scale(df[, i])
     }
     return(df)
 }
@@ -211,17 +209,42 @@ num.trims = function(df, list){
 # num.trans()
 #--------------------------------------
 # Function to transform numeric variables
-num.trans = function(df, list){
-    for (num in list){
+num.trans = function(df){
+    cols = colnames(df[, !sapply(df, is.factor)])
+    for (i in cols){
         # Natural Log
-        num_ln = paste(num, "ln", sep = "_")
-        df[num_ln] = (sign(df[, num]) * log(abs(df[, num])+1))
+        i_ln = paste(i, "ln", sep = "_")
+        df[i_ln] = (sign(df[, i]) * log(abs(df[, i])+1))
         # Square Root
-        num_rt = paste(num, "rt", sep = "_")
-        df[num_rt] = (sign(df[, num]) * sqrt(abs(df[, num])+1))
+        i_rt = paste(i, "rt", sep = "_")
+        df[i_rt] = (sign(df[, i]) * sqrt(abs(df[, i])+1))
         # Square
-        num_sq = paste(num, "sq", sep = "_")
-        df[num_sq] = (df[, num] * df[, num])
+        i_sq = paste(i, "sq", sep = "_")
+        df[i_sq] = (df[, i] * df[, i])
+    }
+    return(df)
+}
+
+#--------------------------------------
+# num.trims()
+#--------------------------------------
+# Function to trim numeric variables at various percentiles
+num.trims = function(df){
+    cols = colnames(df[, !sapply(df, is.factor)])
+    require(scales)
+    for (i in cols){
+        # 1st and 99th
+        T99 = quantile(df[, i], c(0.01, 0.99))
+        df[paste(i, "T99", sep = "_")] = squish(df[, i], T99)
+        # 5th and 95th
+        T95 = quantile(df[, i], c(0.05, 0.95))
+        df[paste(i, "T95", sep = "_")] = squish(df[, i], T95)
+        # 10th and 90th
+        T90 = quantile(df[, i], c(0.10, 0.90))
+        df[paste(i, "T90", sep = "_")] = squish(df[, i], T90)
+        # 25th and 75th
+        T75 = quantile(df[, i], c(0.25, 0.75))
+        df[paste(i, "T75", sep = "_")] = squish(df[, i], T75)
     }
     return(df)
 }
@@ -274,7 +297,7 @@ fac.barplot = function(df, list, var = NULL, cat = F){
 fac.mosaic = function(df, list, var){
     require(RColorBrewer)
     for (fac in list){
-        plot(df[, var], df[, fac], 
+        plot(df[, var], df[, fac],
              col = brewer.pal(nlevels(df[, fac]), "Spectral"),
              main = paste(data.name, var," versus ",
                           data.name, fac, sep = ""),
@@ -291,39 +314,55 @@ fac.mosaic = function(df, list, var){
 # fac.freq()
 #--------------------------------------
 # Frequency of occurence split by named factor for factor variables
-fac.freq = function(df, list, var, cat = T, save = F){
-    for (fac in list){
-        if (cat){
-            name.var = rep(paste(data.name, var, sep = ""),
-                           each = nlevels(df[, fac]))
-            name.split = rep(paste(data.name, fac, sep = ""),
-                             each = nlevels(df[, fac]))
+fac.freq = function(df.fac, df.cn, cat = T){
+    if (!class(df.fac) %in% c("factor")){
+        stop("Please supply a factor variable to df.fac")
+    }
+    table.results = data.frame()
+    df = eval(as.name(paste(unlist(strsplit(deparse(substitute(df.fac)),
+                                            split = "$", fixed = T))[1])))
+    fac = unlist(strsplit(deparse(substitute(df.fac)),
+                          split = "$", fixed = T))[2]
+    if (missing(df.cn)){
+        cols = colnames(df[, sapply(df, is.factor)])
+    } else if (!class(df.cn) %in% c("factor")){
+        stop("Please supply a factor variable to df.cn")
+    } else {
+        cols = unlist(strsplit(deparse(substitute(df.cn)),
+                               split = "$", fixed = T))[2]
+    }
+    if (cat){
+        for (i in cols){
+            name.var = rep(paste(i), each = nlevels(df[, fac]))
+            name.split = rep(paste(fac), each = nlevels(df[, fac]))
             table.level = levels(df[, fac])
-            table.agg = aggregate(df[, var], by = list(Var = df[, fac]), 
+            table.agg = aggregate(df[, i], by = list(Var = df[, fac]),
                                   summary)$x
-            table.prop = format(round(prop.table(table.agg, 1) * 100, 
+            table.prop = format(round(prop.table(table.agg, 1) * 100,
                                       digits = 2), nsmall = 2)
-            table.results = as.data.frame(cbind(name.var, name.split, 
+            table.results = as.data.frame(cbind(name.var, name.split,
                                                 table.level, table.prop))
             colnames(table.results)[1] = "Variable"
             colnames(table.results)[2] = "Split On"
             colnames(table.results)[3] = "Levels"
+            if (missing(df.cn)){
+                print(table.results)
+            } else {
+                return(table.results)
+            }
         }
-        if (!cat){
-            name.fac = rep(paste(data.name, fac, sep = ""), each = 2)
-            name.type = c("Raw", "Percent")
-            table.agg = t(summary(df[, fac]))
-            table.prop = format(round(prop.table(table.agg) * 100, 
-                                      digits = 2), nsmall = 2)
-            table.row = rbind(table.agg, table.prop)
-            table.col = cbind(name.fac, name.type, table.row)
-            table.results = as.data.frame(table.col)
-            colnames(table.results)[1] = "Variable"
-            colnames(table.results)[2] = "Type"
-        }
-        print(table.results)
     }
-    if (save){
+    if (!cat){
+        name.var = rep(paste(fac), each = 2)
+        name.type = c("Count", "Percent")
+        table.agg = t(summary(df[, fac]))
+        table.prop = format(round(prop.table(table.agg) * 100,
+                                  digits = 2), nsmall = 2)
+        table.row = rbind(table.agg, table.prop)
+        table.col = cbind(name.var, name.type, table.row)
+        table.results = as.data.frame(table.col)
+        colnames(table.results)[1] = "Variable"
+        colnames(table.results)[2] = "Type"
         return(table.results)
     }
 }
@@ -332,11 +371,12 @@ fac.freq = function(df, list, var, cat = T, save = F){
 # fac.flag()
 #--------------------------------------
 # Function to create indicator variables from factor variable levels
-fac.flag = function(df, list){
-    for (fac in list){
-        for (level in unique(df[, fac])){
-            df[paste(fac, level, sep = "_")] = 
-                as.factor(ifelse(df[, fac] == level, 1, 0))
+fac.flag = function(df){
+    cols = colnames(df[, sapply(df, is.factor)])
+    for (i in cols){
+        for (level in unique(df[, i])){
+            df[paste(i, level, sep = "_")] =
+                as.factor(ifelse(df[, i] == level, 1, 0))
         }
     }
     return(df)
