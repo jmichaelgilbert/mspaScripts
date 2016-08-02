@@ -13,7 +13,7 @@ output:
 geometry: margin = 0.5in
 ---
 \
-```{r setup.R, include = F, message = F, warning = F}
+```{r setup_R, include = F, message = F, warning = F}
 # Clear workspace
 rm(list=ls())
 
@@ -26,7 +26,7 @@ library(rattle)
 library(rpart)
 ```
 
-```{r setup.knitr, include = F}
+```{r setup_knitr, include = F}
 # Set code width to 60 to contain within PDF margins
 knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
 
@@ -37,7 +37,7 @@ knitr::opts_chunk$set(fig.align = "center")
 knitr::opts_knit$set(global.par = T)
 ```
 
-```{r Functions, include = F}
+```{r setup_FUN, include = F}
 #--------------------------------------
 # Quantile Function
 #--------------------------------------
