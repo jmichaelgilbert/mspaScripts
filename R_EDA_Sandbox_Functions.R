@@ -321,7 +321,7 @@ num.plots = function(df, df.num, df.fac, prob = F, norm = T,
 #--------------------------------------
 # num.freq()
 #--------------------------------------
-# Summary statistics split by named factor for numeric variables
+# Summary stats for numeric variables, split by named factor
 num.freq = function(df.fac, df.num.cn){
     table.results = data.frame()
     # Check df.fac is factor
@@ -541,7 +541,7 @@ fac.mosaic = function(df.fac, df.fac.cn){
 #--------------------------------------
 # fac.freq()
 #--------------------------------------
-# Frequency of occurence split by named factor for factor variables
+# Frequency of occurrence for factor variables, split by named factor
 fac.freq = function(df.fac, df.fac.cn, cat = T){
     table.results = data.frame()
     # Check df.fac is factor
