@@ -14,7 +14,7 @@ output:
 geometry: margin = 0.5in
 ---
 \
-```{r setup.R, include = F, message = F, warning = F}
+```{r setup_R, include = F, message = F, warning = F}
 # Clear workspace
 rm(list=ls())
 
