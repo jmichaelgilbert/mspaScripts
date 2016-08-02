@@ -1,0 +1,205 @@
+---
+title: "R_EDA_Sandbox_Demo"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+  pdf_document: default
+geometry: margin = 0.5in
+---
+
+```{r setup_knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set warnings to false
+knitr::opts_chunk$set(warning = F)
+
+# Set messages to false
+knitr::opts_chunk$set(message = F)
+
+# Set results to hold
+knitr::opts_chunk$set(results = "hold")
+```
+
+\
+
+This is a demo of functions I wrote to use in intial `EDA`. The functions are centrally stored on `GitHub` [here](https://github.com/jmichaelgilbert/mspaScripts/blob/master/R_EDA_Sandbox_Functions.R).
+
+```{r setup_FUN, results = "hide"}
+# Load libraries
+library(RCurl)
+library(pander)
+
+#==============================================================================
+# Functions
+#==============================================================================
+# Create function to source functions from GitHub
+source.GitHub = function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", 
+                                          "cacert.pem", package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url = "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+```
+
+# Background
+
+This demo uses the `Auto` dataset from the `ISL` website (the version included in the `{ISLR}` package is slightly different). We'll start by importing the data and doing some minor tweaks based on a data quality check. Our response variable is `mpg`. 
+
+```{r}
+# Download and assign data
+if(!file.exists("~/Auto.csv")){
+    URL = getURL("http://www-bcf.usc.edu/~gareth/ISL/Auto.csv")
+    auto = read.csv(textConnection(URL), header = T)
+    rm(URL)
+}
+```
+
+# Data Quality Check
+
+First we check our dimensions and the first few observations or _head_ of our dataset:
+
+```{r}
+# View dimensions
+dim(auto)
+
+# View head
+head(auto)
+```
+
+Next we check our summary statistics, and data classes:
+
+```{r}
+# View summary statistics
+summary(auto)
+
+# View classes
+sapply(auto, class)
+```
+
+We notice a few potential issues:
+
+* `cylinders` should probably be a `factor` variable;
+* `horsepower` should probably be a `numeric` variable;
+* `weight` should probably be a `numeric` variable (`R` will automatically convert `integer` variables to `numeric` for mathematical operations);
+* `origin` should probably be a `factor` variable as it indicates country of origin;
+* `name` should probably be a `character` variable.
+
+Additionally, the `horsepower` variable has a `?`. That should probably be a `NA` value (in case any other variables use the `?` character to denote `NA`, we'll apply it to the whole dataset). Note that with `horsepower`, we first convert it to a character to preserve the correct numerical values. Let's make these changes:
+
+``` {r}
+# Treat "?" as NA
+auto[auto == "?"] = NA
+
+# Convert variables as appropriate
+auto$horsepower = as.numeric(as.character(auto$horsepower))
+auto$weight = as.numeric(auto$weight)
+auto$cylinders = as.factor(auto$cylinders)
+auto$origin = as.factor(auto$origin)
+auto$name = as.character(auto$name)
+```
+
+For the purposes of the demo, we'll drop the `name` attribute and remove the tuples with `NA` values (this is revisited in the _Attribute Manipulations_ section). We'll create a version of `auto` called `auto.am` to use in this later section.
+
+```{r}
+# Drop name variable
+auto = subset(auto, select = -name)
+
+# Create separate data.frame for auto
+auto.am = auto
+
+# Remove NA values
+auto = na.omit(auto)
+```
+
+# Qualitative EDA
+
+Now we'll start with some visual `EDA`. The second user-defined function we'll use is `num.plots()`. This function produces a `histogram`, `boxplot`, `scatterplot`, and `Q-Q plot` for each `numeric` variable __or__ an individual variable named in `num.plots(df = )`. For the `scatterplot`, the response variable `mpg` must be named, and the `boxplot` can be split by a factor class. The histogram can also plot bins of equally spaced _probabilities_ (`num.plots(prob = T)`), and the normal curve overlay can be turned on or off (`num.plots(norm = F)`).
+
+The function is really composed of four separate functions, which can each be called individually: `num.hist`, `num.boxplot`, `num.scatter`, and `num.qq`.
+
+```{r}
+# Create plots of numeric variables
+# Use [mpg] as response in scatterplot
+# Use [origin] as factor to split in boxplots
+num.plots(df = auto, df.num = auto$mpg, df.fac = auto$origin)
+```
+
+We'll continue with your visual `EDA`, but now for `factor` variables. This uses two user-defined functions: `fac.barplot`, and `fac.mosaic`. The former makes barplots of factor variables (and will also accept a numeric variable to segregate on). The latter makes mosaic plots for a named factor. Both will also accept an individual variable named in `num.plots(df = )` - this is done with the `fac.mosaic()` function.
+
+Note the mosaic plot shows some pretty unbalanced classes when it comes to `cylinders` by `origin`.
+
+```{r}
+# Create barplots for factor variables
+fac.barplot(df = auto)
+
+# Create mosaic plot for 
+fac.mosaic(df = auto$origin, df.fac.cn = auto$cylinders)
+```
+
+# Quantitative EDA
+
+Now we'll switch gears (no pun intended) over to quantitative `EDA`. First, we'll look at summary statistics for `numeric` variables split by a named `factor` variable (`origin`). This user-defined function is called `num.freq()`. By default, the function will return summary stats for _all_ `numeric` (or `integer`) variables. A second argument, `num.freq(df.num.cn = )`, can be supplied specifying a single `numeric` or `integer` variable to use.
+
+```{r}
+# Summary stats for numeric variables, split by named factor
+num.freq(auto$origin)
+```
+
+Similarly, we can look at occurence rates by `factor` class - think of this as the quantitative version of the mosaic plot. This user-defined function is called `fac.freq()`. A second argument, `num.freq(df.num.cn = )`, can be supplied specifying a single `factor` variable to use. A third argument, `fac.freq(cat = )`, can be supplied, returning counts and frequencies of the `factor` (the default is `FALSE`).
+
+```{r}
+# Frequency of occurrence for factor variables, split by named factor
+fac.freq(auto$origin)
+
+# Counts and frequency of occurrence of named factor
+fac.freq(auto$origin, cat = F)
+```
+
+# Attribute Manipulations
+
+The last part of the demo deals with various variable manipulations: missing flag creation, scaling, trimming, transforming, and creating indicator variables for each `factor` variable level.
+
+## Missing Values
+
+We'll use the user-defined function `miss.flag()`. This creates indicator variables for variables with missing data, as sometimes missingness is predictive. The function defaults to automatically do this for all variables in the dataset, but can be specified to only do it for a specific variable, or type (e.g. `numeric` or `factor`). 
+
+```{r}
+# Create temp data.frame
+auto.temp = auto.am
+
+# Apply missing flag function
+auto.temp = miss.flag(auto.temp)
+```
+
+When viewing the names, we see there's a new variable called `MF_horsepower`, with class factor. 
+
+```{r}
+# View names
+names(auto.temp)
+
+# Check class
+class(auto.temp$MF_horsepower)
+
+# Validate application
+sum(is.na(auto.temp$horsepower))
+length(auto.temp$MF_horsepower[auto.temp$MF_horsepower == 1])
+```
+
+## 
