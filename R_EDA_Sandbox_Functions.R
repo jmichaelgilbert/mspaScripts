@@ -75,7 +75,7 @@ num.boxplot = function(df, df.fac){
     cols = colnames(df[, !sapply(df, is.factor)])
     for (i in cols){
         if (missing(df.fac)){
-            boxplot(df[, i], col = "grey",
+            boxplot(df[, i], col = "grey", horizontal = T,
                     main = paste("Boxplot of ", df.name, "$", i, sep = ""),
                     xlab = paste(df.name, "$", i, sep = ""),
                     ylab = "Values")
@@ -84,7 +84,7 @@ num.boxplot = function(df, df.fac){
         } else {
             fac = unlist(strsplit(deparse(substitute(df.fac)),
                                   split = "$", fixed = T))[2]
-            boxplot(df[, i] ~ df[, fac], col = "grey",
+            boxplot(df[, i] ~ df[, fac], col = "grey", horizontal = T,
                     main = paste(df.name, "$", i," versus ",
                                  deparse(substitute(df.fac)), sep = ""),
                     ylab = "Values")
@@ -161,16 +161,90 @@ num.scatter = function(df, df.num){
 #--------------------------------------
 # num.plots()
 #--------------------------------------
+#--------------------------------------
+# num.plots()
+#--------------------------------------
 # Function to produce four plots per variable:
-#   Scatterplot, Q-Q Plot, Histogram, Boxplot
-num.plots = function(df, df.num, df.fac, prob = F, norm = T){
-    par(mfcol = c(2, 2))
+# num.plots(which = ) corresponds as follows:
+#   1 = Histogram
+#   2 = Scatterplot
+#   3 = Boxplot
+#   4 = QQ Plot
+num.plots = function(df, df.num, df.fac, prob = F, norm = T,
+                     which = c(1, 2, 3, 4)){
+    if (missing(which)){
+        par(mfcol = c(2, 2))
+    }
+    df.name = deparse(substitute(df))
     cols = colnames(df[, !sapply(df, is.factor)])
     for (i in cols){
-        #num.hist(df, prob, norm)
-        num.scatter(df, df.num)
-        #num.boxplot(df, df.fac)
-        #num.qq(df)
+        #------------------------------
+        # Histograms
+        #------------------------------
+        if (1 %in% which){
+            main = paste("Histogram of ", df.name, "$", i, sep = "")
+            sub = ifelse(norm, "normal curve overlay (blue)", "")
+            y = hist(df[, i], plot = F)
+            if (prob){
+                seq = seq(0.0, 1.0, by = 0.1)
+                h = hist(df[, i], col = "grey", main = main, sub = sub,
+                         breaks = quantile(df[, i], probs = seq),
+                         xlab = paste(df.name, "$", i, sep = ""))
+            }
+            if (!prob){
+                h = hist(df[, i], col = "grey", main = main, sub = sub,
+                         ylim = c(0, 1.1*max(y$counts)),
+                         xlab = paste(df.name, "$", i, sep = ""))
+            }
+            if (norm){
+                xfit = seq(min(df[, i]), max(df[, i]), length = 100)
+                yfit = dnorm(xfit, mean = mean(df[, i]), sd = sd(df[, i]))
+                if (norm & !prob){
+                    yfit = yfit * diff(h$mids[1:2]) * length(df[, i])
+                }
+                lines(xfit, yfit, col = "blue", lwd = 2)
+            }
+        }
+        #------------------------------
+        # Scatterplots
+        #------------------------------
+        if (2 %in% which){
+            num = unlist(strsplit(deparse(substitute(df.num)),
+                                  split = "$", fixed = T))[2]
+            plot(df[, i], df[, num], pch = 21, bg = "grey",
+                 main = paste(df.name, "$", num, " versus ",
+                              df.name, "$", i, sep = ""),
+                 ylab = paste(df.name, "$", num, sep = ""),
+                 xlab = paste(df.name, "$", i, sep = ""))
+        }
+        #------------------------------
+        # Boxplots
+        #------------------------------
+        if (3 %in% which){
+            if (missing(df.fac)){
+                boxplot(df[, i], col = "grey", horizontal = T,
+                        main = paste("Boxplot of ", df.name, "$", i, sep = ""),
+                        xlab = paste(df.name, "$", i, sep = ""),
+                        ylab = "Values")
+            } else if (!class(df.fac) %in% c("factor")){
+                stop("Please supply a factor variable to df.fac")
+            } else {
+                fac = unlist(strsplit(deparse(substitute(df.fac)),
+                                      split = "$", fixed = T))[2]
+                boxplot(df[, i] ~ df[, fac], col = "grey", horizontal = T,
+                        main = paste(df.name, "$", i," versus ",
+                                     deparse(substitute(df.fac)), sep = ""),
+                        ylab = "Values")
+            }
+        }
+        #------------------------------
+        # QQ Plots
+        #------------------------------
+        if (4 %in% which){
+            qqnorm(df[, i], pch = 21, bg = "grey",
+                   main = paste("Normal Q-Q Plot of ", df.name, "$", i, sep = ""))
+            qqline(df[, i], lwd = 2, col = "blue")
+        }
     }
     return(par(mfcol = c(1, 1)))
 }
