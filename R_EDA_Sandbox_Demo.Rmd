@@ -29,7 +29,7 @@ knitr::opts_chunk$set(message = F)
 
 \ 
 
-This is a demo of functions I wrote to use in intial `EDA`. The functions are centrally stored on `GitHub` [here](https://github.com/jmichaelgilbert/mspaScripts/blob/master/R_EDA_Sandbox_Functions.R), and also included here as an appendix.
+This is a demo of functions I wrote to use in intial `EDA`. The function code is included here as an appendix, though the most recent version is centrally stored on `GitHub` [here](https://github.com/jmichaelgilbert/mspaScripts/blob/master/R_EDA_Sandbox_Functions.R). 
 
 ```{r setup_FUN, results = "hide"}
 # Load libraries
@@ -59,7 +59,7 @@ source.GitHub(url); rm(url)
 
 # Background
 
-This demo uses the `Auto` dataset from the `ISL` website (the version included in the `{ISLR}` package is slightly different). We'll start by importing the data and doing some minor tweaks based on a data quality check. Our response attribute is `mpg`, but we are also interested in any class effects of `origin`.
+This demo uses the `Auto` dataset from the `ISL` website (the version included in the `{ISLR}` package is slightly different). We'll start by importing these data and doing some minor tweaks based on a data quality check. Our response attribute is `mpg`, but we are also interested exploring data by the class `origin`. 
 
 ```{r}
 # Download and assign data
@@ -74,24 +74,18 @@ if(!file.exists("~/Auto.csv")){
 
 # Data Quality Check
 
-First we check our dimensions and the first few observations or _head_ of our dataset:
+The function `str()` helps us check the dimensions, the first few observations, and attribute classes: 
 
 ```{r}
-# View dimensions
-dim(auto)
-
-# View head
-head(auto)
+# View structure
+str(auto)
 ```
 
-Next we check our summary statistics, and data classes:
+Next we check our summary statistics:
 
 ```{r}
 # View summary statistics
 summary(auto)
-
-# View classes
-sapply(auto, class)
 ```
 
 We notice a few potential issues:
@@ -102,7 +96,7 @@ We notice a few potential issues:
 * `origin` should probably be a `factor` attribute as it indicates country of origin;
 * `name` should probably be a `character` attribute.
 
-Additionally, `horsepower` has a `?`. That should probably be a `NA` value (in case any other attributes use the `?` character to denote `NA`, we'll apply it to the whole dataset). Note that with `horsepower`, we first convert it to a character to preserve the correct numerical values. Let's make these changes:
+Additionally, `horsepower` has a `?`. That should probably be a `NA` value (in case any other attributes use the `?` character to denote `NA`, we'll apply it to the whole dataset). Note that with `horsepower`, we first convert it to a character to preserve the numeric values. Let's make these changes:
 
 ``` {r}
 # Treat "?" as NA
@@ -116,7 +110,7 @@ auto$origin = as.factor(auto$origin)
 auto$name = as.character(auto$name)
 ```
 
-For the purposes of the demo, we'll drop the `name` attribute and remove the tuples with `NA` values (this is revisited in the _Attribute Manipulations_ section). We'll create a version of `auto` called `auto.am`as a reference for use in this later section.
+For the purposes of this demo, we'll drop the `name` attribute and remove the tuples with `NA` values (this is revisited in the _Attribute Manipulations_ section). We'll create a version of `auto` called `auto.am`as a reference for use in this later section.
 
 ```{r}
 # Drop name attribute
