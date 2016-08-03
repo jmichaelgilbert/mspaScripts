@@ -7,7 +7,7 @@ output:
     fig_caption: yes
     fig_crop: no
     fig_height: 5.00
-    fig_width: 7.00
+    fig_width: 6.00
     highlight: tango
   pdf_document: default
 geometry: margin = 0.5in
@@ -27,9 +27,9 @@ knitr::opts_chunk$set(warning = F)
 knitr::opts_chunk$set(message = F)
 ```
 
-\
+\ 
 
-This is a demo of functions I wrote to use in intial `EDA`. The functions are centrally stored on `GitHub` [here](https://github.com/jmichaelgilbert/mspaScripts/blob/master/R_EDA_Sandbox_Functions.R).
+This is a demo of functions I wrote to use in intial `EDA`. The functions are centrally stored on `GitHub` [here](https://github.com/jmichaelgilbert/mspaScripts/blob/master/R_EDA_Sandbox_Functions.R), and also included here as an appendix.
 
 ```{r setup_FUN, results = "hide"}
 # Load libraries
@@ -55,9 +55,11 @@ url = "http://bit.ly/1T6LhBJ"
 source.GitHub(url); rm(url)
 ```
 
+\ 
+
 # Background
 
-This demo uses the `Auto` dataset from the `ISL` website (the version included in the `{ISLR}` package is slightly different). We'll start by importing the data and doing some minor tweaks based on a data quality check. Our response attribute is `mpg`. 
+This demo uses the `Auto` dataset from the `ISL` website (the version included in the `{ISLR}` package is slightly different). We'll start by importing the data and doing some minor tweaks based on a data quality check. Our response attribute is `mpg`, but we are also interested in any class effects of `origin`.
 
 ```{r}
 # Download and assign data
@@ -67,6 +69,8 @@ if(!file.exists("~/Auto.csv")){
     rm(URL)
 }
 ```
+
+\ 
 
 # Data Quality Check
 
@@ -125,9 +129,11 @@ auto.am = auto
 auto = na.omit(auto)
 ```
 
+\ 
+
 # Qualitative EDA
 
-Now we'll start with some visual `EDA`. The second user-defined function we'll use is `num.plots()`. This function produces a `histogram`, `boxplot`, `scatterplot`, and `Q-Q plot` for each `numeric` attribute __or__ an individual attribute named in `num.plots(df = )`. For the `scatterplot`, the response attribute `mpg` must be named, and the `boxplot` can be split by a factor class. The histogram can also plot bins of equally spaced _probabilities_ (`num.plots(prob = T)`), and the normal curve overlay can be turned on or off (`num.plots(norm = F)`).
+We'll start with some visual `EDA`. The first user-defined function we'll use is `num.plots()`. This function produces a `histogram`, `boxplot`, `scatterplot`, and `Q-Q plot` for each `numeric` attribute _or_ an individual attribute named in `num.plots(df = )`. For the `scatterplot`, the response attribute `mpg` must be named, and the `boxplot` can be split by a factor class. The histogram can also plot bins of _equally spaced probabilities_ (`num.plots(prob = T)`), and the normal curve overlay can be turned on or off (`num.plots(norm = F)`).
 
 The function is really composed of four separate functions, which can each be called individually: `num.hist`, `num.boxplot`, `num.scatter`, and `num.qq`.
 
@@ -150,6 +156,8 @@ fac.barplot(df = auto)
 fac.mosaic(df = auto$origin, df.fac.cn = auto$cylinders)
 ```
 
+\ 
+
 # Quantitative EDA
 
 Now we'll switch gears (no pun intended) over to quantitative `EDA`. First, we'll look at summary statistics for `numeric` attributes split by a named `factor` attribute (`origin`). This user-defined function is called `num.freq()`. By default, the function will return summary stats for _all_ `numeric` (or `integer`) attributes. A second argument, `num.freq(df.num.cn = )`, can be supplied specifying a single `numeric` or `integer` attribute to use. Here we use `mpg`.
@@ -168,6 +176,8 @@ fac.freq(df.fac = auto$origin)
 # Counts and frequency of occurrence of named factor
 fac.freq(df.fac = auto$origin, cat = F)
 ```
+
+\ 
 
 # Attribute Manipulations
 
@@ -294,6 +304,8 @@ colnames(auto.temp[, 9:ncol(auto.temp)])
 # Summary stats
 summary(auto.temp[, 9:ncol(auto.temp)])
 ```
+
+\ 
 
 \pagebreak
 
