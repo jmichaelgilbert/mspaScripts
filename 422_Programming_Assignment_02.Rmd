@@ -13,7 +13,7 @@ geometry: margin = 0.5in
 ---
 \
 Workspace cleanup and prep:
-```{r setup.R, message = F, warning = F}
+```{r setup_R, message = F, warning = F}
 # Clear workspace
 rm(list=ls())
 
@@ -28,7 +28,7 @@ library(RCurl)
 
 ```
 
-```{r setup.knitr, include = F}
+```{r setup_knitr, include = F}
 # Set code width to 60 to contain within PDF margins
 knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
 
@@ -39,7 +39,7 @@ knitr::opts_chunk$set(fig.align = "center")
 knitr::opts_knit$set(global.par = T)
 ```
 
-```{r Functions}
+```{r setup_FUN}
 # Functions
 
 #--------------------------------------

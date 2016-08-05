@@ -13,7 +13,7 @@ output:
 geometry: margin = 0.5in
 ---
 \
-```{r setup, include = F}
+```{r setup_knitr, include = F}
 knitr::opts_chunk$set(echo = T)
 ```
 
