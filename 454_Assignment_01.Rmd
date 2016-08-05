@@ -10,6 +10,7 @@ output:
     fig_height: 4.75
     fig_width: 5.75
     highlight: tango
+    number_sections: yes
 geometry: margin = 0.5in
 ---
 \
@@ -56,7 +57,7 @@ quantiles = function(df, na.rm = T){
 }
 ```
 
-## Introduction
+# Introduction
 
 The purpose of this report is to assess data quality, conduct exploratory data analysis, and construct Naive models based on the exploratory data analysis for the `Wine` data set. Both the data set and metadata (names) file are available for download [here](http://archive.ics.uci.edu/ml/datasets/Wine).
 
@@ -64,7 +65,7 @@ This report contains three sections:
 
 1. Data Quality Check
 2. Exploratory Data Analysis
-3. Model Based Exploratory Data Analysis
+3. Model-Based Exploratory Data Analysis
 
 An appendix of relevant `R` code used in producing the report is included. The code is grouped by the same three sections.
 
@@ -95,7 +96,7 @@ wine$Proline = as.numeric(wine$Proline)
 cn.num = colnames(wine[, !sapply(wine, is.factor)])
 ```
 
-## Data Quality Check
+# Data Quality Check
 
 From the `Wine` metadata file, the response variable is the class identifier, `Class`. The response variable is a categorical or factor variable, with classes 1, 2, and 3. Each class corresponds to a different cultivar of wine. Other variables (or attributes) reflect different constituents found in each type of wine. The values of those variables are the results (quantities) of a chemical analysis for each observation. 
 
@@ -169,7 +170,7 @@ The _Data Quality Check_ should also look for invalid values. For `numeric` vari
 
 Whether checking for missing values, potential outliers, or invalid values, be mindful of sentinel values, or values that are used as an indicator for some meaning or status. For example: an `AGE` of `-1` could mean `Unknown`, while a `HOME_VALUE` of `0` could mean `Renter`.
 
-## Exploratory Data Analysis
+# Exploratory Data Analysis
 
 After the initial data quality check, data are further examined to identify interesting information or detect interesting relationships. That process is known as Exploratory Data Analysis or EDA. 
 
@@ -258,7 +259,7 @@ fancyRpartPlot(rpart(wine$Class ~ ., data = wine), sub = "")
 
 Even cursory EDA can provide valuable insight and information on the relationships within the data set. The relationships mentioned here can be leveraged in model construction, for instance the clear class separation in the variables `Phenols_Nonflavanoid` and `OD280_OD315` suggest these could be good predictor variables to include in a model. The correlation plots differ across classes, which could make it easier to build an accurate predictive model, and also provides information on potential collinear variables. Lastly, the tree model provides a subset of variables that could be used in model construction to build an accurate predictive model.
 
-## Model Based Exploratory Data Analysis
+# Model-Based Exploratory Data Analysis
 
 Model based EDA is another way to glean information about the relationships in the data set. Naive models are used for this purpose, since the goal at this stage is not to build a highly accurate predictive model, but to uncover additional information. 
 
@@ -300,7 +301,7 @@ Between the `LDA` and `PCA` models, the `LDA` model shows cleaner class separati
 
 \pagebreak
 
-## Appendix - Relevant R Code
+# Appendix - Relevant R Code
 
 ```{r Appendix, eval = F}
 #==============================================================================
