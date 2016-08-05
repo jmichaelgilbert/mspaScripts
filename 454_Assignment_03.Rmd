@@ -1,0 +1,1725 @@
+---
+title: "454_Assignment_03"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document: default
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+    number_sections: yes
+geometry: margin = 0.5in
+---
+\
+```{r setup_R, include = F, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(caret)
+library(doParallel)
+library(pander)
+library(pROC)
+library(rattle)
+library(rpart)
+```
+
+```{r setup_knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+```
+
+```{r setup_FUN, include = F}
+#==============================================================================
+# Functions
+#==============================================================================
+
+#--------------------------------------
+# GitHub
+#--------------------------------------
+# Create function to source functions from GitHub
+source.GitHub = function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", 
+                                          "cacert.pem", package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url = "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+
+#--------------------------------------
+# RMSE
+#--------------------------------------
+rmse = function(pred, actual){
+    sqrt(mean((pred - actual)^2))
+}
+
+#--------------------------------------
+# Percent Change
+#--------------------------------------
+# Function to calculate percent change
+perc.change = function(y1, y2){
+    return((y2 - y1) / y1)
+}
+```
+
+# Introduction
+
+The purpose of this report is to assess data quality, conduct exploratory data analysis, build models, and compare model results based on the `Spam` dataset. The dataset and a description file (including a data dictionary) were provided [here](https://archive.ics.uci.edu/ml/datasets/Spambase). A more detailed background on the problem and data description is available [here](https://archive.ics.uci.edu/ml/datasets/Spambase). 
+
+The dataset is a dual collection of various words or symbols collected via e-mail that are both spam and non-spam. The spam material came from "the [Hewlett-Packard] postmaster and individuals who had filed spam". The non-spam material came from "filed work and personal e-mails". __The goal of the model is to accurately predict whether or not a given e-mail is spam__. Subsequently, the model is then deployed as a spam filter.
+
+This report contains five sections:
+
+1. Data Quality Check
+2. Exploratory Data Analysis
+3. Model Build
+4. Model Comparison
+5. Conclusion & Next Steps
+
+An appendix of relevant `R` code used in producing the report is included. The code is grouped by the same four sections.
+
+```{r DIPS1, include = F}
+#==============================================================================
+# Data Import, Prep, and Staging
+#==============================================================================
+
+#--------------------------------------
+# Import
+#--------------------------------------
+# Read data
+spam = read.table("~/spambase.data", header = F, sep = ",")
+
+# Check dimensions
+dim(spam)
+
+# Check variable classes
+sapply(spam, class)
+
+# Summary statistics
+summary(spam)
+
+# Check for NAs
+colSums(is.na(spam))[colSums(is.na(spam)) > 0]
+
+#--------------------------------------
+# Prep
+#--------------------------------------
+# Recode integers to numeric
+spam[56:57] = lapply(spam[56:57], as.numeric)
+
+# Recode integers to factor
+spam$V58 = as.factor(spam$V58)
+
+# Set factor variable levels
+levels(spam$V58) = c("Not_Spam", "Spam")
+
+#--------------------------------------
+# Variable names
+#--------------------------------------
+
+# Store names
+spam.cn.all = c("word_freq_make", 
+                "word_freq_address", 
+                "word_freq_all", 
+                "word_freq_3d", 
+                "word_freq_our", 
+                "word_freq_over", 
+                "word_freq_remove", 
+                "word_freq_internet", 
+                "word_freq_order", 
+                "word_freq_mail", 
+                "word_freq_receive", 
+                "word_freq_will", 
+                "word_freq_people", 
+                "word_freq_report", 
+                "word_freq_addresses", 
+                "word_freq_free", 
+                "word_freq_business", 
+                "word_freq_email", 
+                "word_freq_you", 
+                "word_freq_credit", 
+                "word_freq_your", 
+                "word_freq_font", 
+                "word_freq_000", 
+                "word_freq_money", 
+                "word_freq_hp", 
+                "word_freq_hpl", 
+                "word_freq_george", 
+                "word_freq_650", 
+                "word_freq_lab", 
+                "word_freq_labs", 
+                "word_freq_telnet", 
+                "word_freq_857", 
+                "word_freq_data", 
+                "word_freq_415", 
+                "word_freq_85", 
+                "word_freq_technology", 
+                "word_freq_1999", 
+                "word_freq_parts", 
+                "word_freq_pm", 
+                "word_freq_direct", 
+                "word_freq_cs", 
+                "word_freq_meeting", 
+                "word_freq_original", 
+                "word_freq_project", 
+                "word_freq_re", 
+                "word_freq_edu", 
+                "word_freq_table", 
+                "word_freq_conference", 
+                "char_freq_semicolon", 
+                "char_freq_left_paren", 
+                "char_freq_left_bracket", 
+                "char_freq_exclamation", 
+                "char_freq_usd", 
+                "char_freq_pound", 
+                "capital_run_length_average", 
+                "capital_run_length_longest", 
+                "capital_run_length_total", 
+                "y")
+
+# Assign column names
+colnames(spam) = spam.cn.all
+
+#--------------------------------------
+# Staging
+#--------------------------------------
+# Store dataset name for use in titles, etc. later
+data.name <- "spam$"
+
+# Set response variable
+data.response <- "y"
+
+# Assign numeric column names
+spam.cn.num = colnames(spam[, -58])
+
+# Distribution of Response
+spam.dist = fac.freq(spam, "y", cat = F, save = T)
+
+#--------------------------------------
+# Transform
+#--------------------------------------
+# Create log transform of predictors
+spam.log = lapply(spam[1:57], log1p)
+spam.log = data.frame(spam.log, y = spam$y)
+```
+
+# Data Quality Check
+
+From the `Spam` metadata file, the response variable is a binary indicator for an e-mail being spam or not spam. This variable was named `y`, and coded as a two level factor variable, with levels for `Not_Spam` and `Spam`.
+
+This section contains four parts: _Data Summary_, _Missing Values_, _Potential Outliers_, and _Invalid Values_.
+
+## Data Summary
+
+The dimensions of the `Spam` dataset indicate there are `4601` observations, `57` attributes, and the response variable `y`. The variables `capital_run_length_longest` and `capital_run_length_total` were recoded from `integer()` to `numeric()`. The response variable `y` was recoded from `integer()` to `factor()` with levels `Not_Spam` and `Spam`. 
+
+The distribution of the response variable `y` is shown in __Table 1__ below. The levels of the response variable are not balanced (i.e. evenly distributed).
+
+\begin{center}
+Table 1: Distribution of Response in Spam Dataset
+\end{center}
+
+```{r EDA1, echo = F}
+pander(spam.dist, caption = "", justify = "left")
+```
+
+Due to the large number of attributes, the list below describes the high-level distinctions between attributes, sourced nearly verbatim from [here](https://archive.ics.uci.edu/ml/datasets/Spambase). 
+
+* 48 continuous real [0, 100] attributes of type word\_freq\_WORD; this is the percentage of words in the e-mail that match `WORD`, calculated by multiplying 100 by the count of `WORD`, then dividing by the total number of words in the e-mail 
+
+* 6 continuous real [0, 100] attributes of type char\_freq\_CHAR; this is the percentage of characters in the e-mail that match `CHAR`, calculated by multiplying 100 by the count of `CHAR`, then dividing by the total number of characters in the e-mail 
+* 1 continuous real [1, ...] attribute of type capital\_run\_length\_average; this is the average length of uninterrupted sequences of capital letters
+* 1 continuous real [1, ...] attribute of type capital\_run\_length\_longest; this is the length of the longest uninterrupted sequence of capital letters
+* 1 continuous real [1, ...] attribute of type capital\_run\_length\_total; this is the total count of capital letters
+* 1 nominal {0, 1} class attribute of type `y`; the levels are coded so a value of zero corresponds to `Not_Spam` and a value of one corresponds to `Spam`
+
+__Table 2__ below contains all attribute names under the convention described above for the `Spam` dataset.
+
+\begin{center}
+Table 2: Attribute names for Spam Dataset
+\end{center}
+
+```{r EDA2, echo = F}
+pander(as.data.frame(colnames(spam)), caption = "", justify = "left")
+```
+
+## Missing Values
+
+Another part of the data quality check is to check for missing values and potential outliers. In `R`, missing values are coded as `NA`. There is a practical difference between a `NA` value and a `NULL` value, though `R` does not make this distinction. That said, it is valuable to understand which values are `NA` and which values are `NULL` in the dataset, despite `R` coding both as `NA`.
+
+For the most part, `R` will detect `NA` values and assign them as such. However, if other characters are used to denote `NA` values (e.g. the `?` character), `R` may not detect them. Part of the data quality check includes examining the dataset for such occurrences. Counts of `NA` values either identified by `R` or manually coded, would be included in the output from the `summary()` function. 
+
+There does not appear to be any `NA` or `NULL` values in the `Spam` dataset.
+
+## Potential Outliers
+
+Detecting potential outliers begs the question of what constitutes an outlier. There is no single definition for an outlier, and at times the term outlier might be substituted for another term altogether (e.g. extreme observation). A simple definition can be found in _Introduction to Linear Regression Analysis_ by Montgomery, Peck, and Vining (5th Edition, p. 43): "_Outliers are observations that differ considerably from the rest of the data_." Detecting potential outliers is important, because they can exert leverage or influence, affect model results - during validation or deployment.
+
+Qualitative methods to detect potential outliers include creating _histograms_, _density plots_, and/or _boxplots_. These plots should not be interpreted blindly! For instance, observations beyond the whiskers of a boxplot are not necessarily outliers - in `R`, the default setting is to draw the whiskers at 1.5 times the interquartile range (25th to 75th percentiles) from the box. Histograms may be useful, but interpretation can vary depending on the number of bins used. Alternatively, histograms can be plotted using bins of equally spaced probabilities - the widths of the bins vary, but the area represented by each bin is the same.
+
+In the `Spam` dataset, attribute observations represent frequencies or counts. This creates a high concentration toward zero for nearly all attributes. As a result, valid values could be mistaken as outliers, when in fact they are not. 
+
+There does not appear to be any outlier values in the `Spam` dataset.
+
+## Invalid Values
+
+The data quality check should also look for invalid values. For `numeric` variables, this might be values which are negative in a variable where they should only be positive. For `factor` or `categorical` variables, this could be a miscoded level - examining the frequency of values at each level can be done quantitatively with counts, or qualitatively with barplots. 
+
+Whether checking for missing values, potential outliers, or invalid values, it is important to be mindful of sentinel values, or values that are used as an indicator for some meaning or status. For example: an `AGE` of `-1` could mean `Unknown`, while a `HOME_VALUE` of `0` could mean `Renter`.
+
+There does not appear to be any invalid values in the `Spam` dataset.
+
+# Exploratory Data Analysis
+
+After the initial data quality check, data are further examined to identify interesting information or detect interesting relationships. That process is known as Exploratory Data Analysis or EDA. 
+
+The type of EDA conducted depends on the statistical problem at hand: is the problem one of `regression`, or one of `classification`? The statistical problem faced with the `Spam` dataset is one of `classification`. 
+
+It is also important to understand what might _not_ be useful. Scatterplots of predictor variables against the `factor` response variable are not useful. However, boxplots and histograms can be useful, as can summary statistics and correlations of variables _by class_. The correlations by class can show interesting relationships (and how they vary) by each class in the response variable.
+
+To keep content relevant, many of the figures produced are not included here, but can be reproduced using the included code in the _Appendix_.
+
+This section contains three parts: _Traditional EDA - Quantitative_, _Traditional EDA - Qualitative_, and _Model-Based EDA_. 
+
+_Note_: At this point, the `Spam` dataset does not contain any derived variables. Results from EDA help inform possible variable derivations (e.g. trims, transforms).
+
+## Traditional EDA - Quantitative
+
+In the `Spam` dataset, all predictor variables are `numeric`. Two approaches for quantitative EDA come to mind:
+
+1. Examine summary statistics for `numeric` variables (e.g. quantiles, measures of central tendency) by each class in the response variable. 
+2. Examine correlations between `numeric` variables and each class in the response variable. Isolating the correlations by class could reveal interesting relationships in the dataset.
+
+Unfortunately, both approaches are a bit unwieldy with the `Spam` dataset due to the high number of predictor variables (`57`). The goal of each approach is achieved in _Traditional EDA - Qualitative_, with boxplots and correlation plots.
+
+## Traditional EDA - Qualitative
+
+For qualitative EDA, graphic representations of the two quantitative EDA approaches were used.
+
+Boxplots were used to gauge summary statistics by class. Since observation values in the `Spam` dataset are highly concentrated at zero, nearly all of the boxplots were collapsed and appeared as a straight line. A natural log transformation was applied to the predictor variables using the `R` function `log1p()`.
+
+Boxplots which show clear class distinction of the response variable are valuable. Interestingly, class distinction in predictor variables was seen in both classes `Not_Spam` and `Spam`.
+
+Five boxplots are included below. Each shows class distinction between `Not_Spam` and `Spam`. The boxplots for `word_freq_free` (__Figure 1__) looked very similar to boxplots for `char_freq_exclamation` and `char_freq_usd` (not shown).
+
+\pagebreak
+
+\begin{center}
+Figure 1: Boxplots of word\_freq\_free by Response Class
+\end{center}
+
+```{r EDA3, echo = F}
+num.boxplot(spam.log, "word_freq_free", "y", vs = T)
+```
+
+\begin{center}
+Figure 2: Boxplots of word\_freq\_your by Response Class
+\end{center}
+
+```{r EDA4, echo = F}
+num.boxplot(spam.log, "word_freq_your", "y", vs = T)
+```
+
+\begin{center}
+Figure 3: Boxplots of word\_freq\_hp by Response Class
+\end{center}
+
+```{r EDA5, echo = F}
+num.boxplot(spam.log, "word_freq_hp", "y", vs = T)
+```
+
+\begin{center}
+Figure 4: Boxplots of capital\_run\_length\_longest by Response Class
+\end{center}
+
+```{r EDA6, echo = F}
+num.boxplot(spam.log, "capital_run_length_longest", "y", vs = T)
+```
+
+\begin{center}
+Figure 5: Boxplots of capital\_run\_length\_total by Response Class
+\end{center}
+
+```{r EDA7, echo = F}
+num.boxplot(spam.log, "capital_run_length_total", "y", vs = T)
+```
+
+Many of these are intuitive. For example, `word_freq_hp` makes sense, as the `Not_Spam` collection of e-mails in the dataset "came from filed work and personal e-mails" ([here](https://archive.ics.uci.edu/ml/datasets/Spambase)). Similarly, `word_freq_free` and capital letter usage are also intuitive indicators of `Spam`.
+
+Correlation plots by class in the response variable did not show any interesting relationships or interactions against other variables. As a result, they are not included here, but can be reproduced with code in the _Appendix_.
+
+## Model-Based EDA
+
+A naive decision tree was constructed, fitting the response variable against all other variables in the `Spam` dataset. Interesting information can still be revealed from this naive model. 
+
+In the tree plot below, each rectangle corresponds to either a root, leaf, or terminal node. Within each node:
+
+* The first line refers to the class;
+* The second line is the percentage of rows by class (from left to right) within the node; and
+* The third line is the percentage of rows at the node, from the total rows in the data set.
+
+The first node is the root node. The root node is colored green, because 61% of the rows in the `Spam` dataset correspond to a `y` of `Not_Spam` (line 2). Looking at the second node, the tree splits on the `char_freq_usd` variable. Observations with values less than `0.056` branch to the left, while observations greater than or equal to `0.056` branch to the right. Traveling left, the second node shows `Not_Spam` is the most prevalent class, representing 76% of the population at this criterion (lines 1 and 2). In total, 75% of the `Spam` dataset has a `char_freq_usd` value less than `0.056` (line 3).
+
+\begin{center}
+Figure 6: Naive Tree Plot of Spam Dataset
+\end{center}
+
+```{r EDA8, echo = F, fig.height = 6.5}
+fancyRpartPlot(rpart(spam$y ~ ., data = spam), sub = "", cex = 0.7)
+```
+
+Of the fifty-seven predictor variables fed to the naive tree model, only six are used: `char_freq_usd`, `word_freq_remove`, `word_freq_hp`, `char_freq_exclamation`, `capital_run_length_total`, and `word_freq_free`. Interestingly, most of these variables were also identified in _Traditional EDA - Qualitative_ through boxplots.
+
+The tree model implies _potential_ variable importance, as these variables (and levels or values) were most useful in predicting the class of the response variable `y`. 
+
+Even cursory EDA can provide valuable insight and information on the relationships within the dataset. The relationships identified here can be leveraged in model construction. The branches of the naive tree model illustrate potentially important variables and their associated levels or values.
+
+# Model Build
+
+This section focuses on building models to accurately predict the response variable `y` in the `Spam` dataset. There are four parts, each corresponding to a different model type:
+
+* Logistic Regression
+* Decision Tree
+* Support Vector Machine
+* Random Forest
+
+The _Model Comparison_ section discusses results and predictive accuracy across the modeling suite.
+
+```{r MB1, include = F}
+# Random sample into 70/30 training-test split
+set.seed(123)
+spam.trn = createDataPartition(spam$y, p = 0.70, list = F)
+spam.tst = as.matrix(as.integer(rownames(spam))[-spam.trn])
+
+# Validate split
+length(spam.trn) / nrow(spam)
+
+# Specify fit parameters
+set.seed(123)
+spam.fc = trainControl(method = "repeatedcv", number = 10, repeats = 3)
+```
+
+The `Spam` dataset was split by a stratified random sample into a 70/30 training-test set. The random sample closely approximates the targeted split, with `70.02` percent of rows going in the training set, and `29.98` percent of rows going in the test set. A stratified random sample was used because the response variable does not have equal class distribution. __Table 3__ below shows the distribution of response in the `Spam` and `Spam - Training` datasets.
+
+\begin{center}
+Table 3: Distribution of Response in Spam \& Spam - Training Datasets
+\end{center}
+
+```{r MB2, echo = F}
+# Create table of variable information
+var.occ.raw = table(spam$y)
+var.occ.pct = round(prop.table(var.occ.raw), digits = 4) * 100
+var.occ = data.frame(var.occ.raw, var.occ.pct)
+var.occ = subset(var.occ, select = -Var1.1)
+colnames(var.occ) = c("Variable", "Raw", "Percentage")
+
+trn.occ.raw = table(spam$y[spam.trn])
+trn.occ.pct = round(prop.table(trn.occ.raw), digits = 4) * 100
+trn.occ = data.frame(trn.occ.raw, trn.occ.pct)
+trn.occ = subset(trn.occ, select = -Var1.1)
+colnames(trn.occ) = c("Variable", "Raw", "Percentage")
+
+occ = rep(c("Spam", "Spam - Training"), times = 2)
+occ = cbind(Dataset = occ, 
+            rbind(var.occ[1, ], 
+                  trn.occ[1, ], 
+                  var.occ[2, ], 
+                  trn.occ[2, ]))
+rownames(occ) = seq(1:nrow(occ))
+rm(var.occ); rm(var.occ.raw); rm(var.occ.pct)
+rm(trn.occ); rm(trn.occ.raw); rm(trn.occ.pct)
+
+pander(occ, caption = "", justify = "left")
+```
+
+The class frequencies in the `Spam - Training` dataset closely approximate the frequencies in the `Spam` dataset.
+
+Finally, two models of each type were fit. The first model (`M1`) uses the original predictor variables in the `Spam` dataset. The second model (`M2`) uses predictor variables which have been transformed using natural log with the `R` function `log1p()`.
+
+## Logistic Regression
+
+```{r MB3, include = F}
+#==============================================================================
+# Logistic Regression
+#==============================================================================
+# Specify fit parameters
+spam.glm.fc = trainControl(method = "none", 
+                           classProbs = T)
+
+#------------------------------------------------------------------------------
+# Model 1 | spam
+#------------------------------------------------------------------------------
+# Build model
+set.seed(123)
+spam.glm.m1 = train(y ~ ., 
+                    data = spam[spam.trn, ], 
+                    method = "glmStepAIC", direction = "forward", 
+                    trControl = spam.glm.fc)
+
+# Summary
+spam.glm.m1$finalModel
+length(spam.glm.m1$finalModel$coefficients)-1
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.glm.m1.trn.pred = predict(spam.glm.m1, newdata = spam[spam.trn, ], 
+                               type = "prob")[, 2]
+
+# Create ROC curve
+spam.glm.m1.trn.roc = roc(response = spam$y[spam.trn], 
+                          predictor = spam.glm.m1.trn.pred)
+spam.glm.m1.trn.auc = spam.glm.m1.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.glm.m1.trn.roc, col = "blue", main = "ROC Curve for spam.glm.m1")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.glm.m1.trn.pred = predict(spam.glm.m1, newdata = spam[spam.trn, ])
+spam.glm.m1.trn.cm = confusionMatrix(spam.glm.m1.trn.pred, 
+                                     spam$y[spam.trn])
+spam.glm.m1.trn.cm$overall[1]
+
+# Test
+spam.glm.m1.tst.pred = predict(spam.glm.m1, newdata = spam[spam.tst, ])
+spam.glm.m1.tst.cm = confusionMatrix(spam.glm.m1.tst.pred, 
+                                     spam$y[spam.tst])
+spam.glm.m1.tst.cm$overall[1]
+
+#------------------------------------------------------------------------------
+# Model 2 | log1p(spam)
+#------------------------------------------------------------------------------
+# Build model
+set.seed(123)
+spam.glm.m2 = train(y ~ ., 
+                    data = spam.log[spam.trn, ], 
+                    method = "glmStepAIC", direction = "forward", 
+                    trControl = spam.glm.fc)
+
+# Summary
+spam.glm.m2$finalModel
+length(spam.glm.m2$finalModel$coefficients)-1
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.glm.m2.trn.pred = predict(spam.glm.m2, newdata = spam.log[spam.trn, ], 
+                               type = "prob")[, 2]
+
+# Create ROC curve
+spam.glm.m2.trn.roc = roc(response = spam.log$y[spam.trn], 
+                          predictor = spam.glm.m2.trn.pred)
+spam.glm.m2.trn.auc = spam.glm.m2.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.glm.m2.trn.roc, col = "blue", main = "ROC Curve for spam.glm.m2")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.glm.m2.trn.pred = predict(spam.glm.m2, newdata = spam.log[spam.trn, ])
+spam.glm.m2.trn.cm = confusionMatrix(spam.glm.m2.trn.pred, 
+                                     spam.log$y[spam.trn])
+spam.glm.m2.trn.cm$overall[1]
+
+# Test
+spam.glm.m2.tst.pred = predict(spam.glm.m2, newdata = spam.log[spam.tst, ])
+spam.glm.m2.tst.cm = confusionMatrix(spam.glm.m2.tst.pred, 
+                                     spam.log$y[spam.tst])
+spam.glm.m2.tst.cm$overall[1]
+```
+
+Using the `Spam` dataset, the `M1` `Logistic Regression` model was fit with forward selection with `AIC` as the minimization criterion. The final model used `40` of `57` predictor variables. In-sample accuracy was `93.67%`.
+
+A `ROC` curve was produced for predictions on the _training_ dataset, with the idea of choosing an optimal threshold for classification based on an equal balance between sensitivity and specificity. Ultimately, that approach was not used. __Figure 6__ below shows the `ROC` curve for `M1` on the training dataset. The `AUC` of `M1` was `97.87%`.
+
+\begin{center}
+Figure 6: ROC Curve for spam.glm.m1 (Training)
+\end{center}
+
+```{r MB4, echo = F, fig.height = 5.75}
+par(pty = "s")
+plot(spam.glm.m1.trn.roc, col = "blue", main = "ROC Curve for spam.glm.m1")
+par(pty = "m")
+```
+
+Using the `Spam` dataset with natural log transformed predictor variables, the `M2` `Logistic Regression` model was fit with forward selection with `AIC` as the minimization criterion. The final model used `38` of `57` predictor variables. In-sample accuracy was `94.72%`.
+
+A `ROC` curve was produced for predictions on the _training_ dataset, with the idea of choosing an optimal threshold for classification based on an equal balance between sensitivity and specificity. Ultimately, that approach was not used. __Figure 7__ below shows the `ROC` curve for `M1` on the training dataset. The `AUC` of `M1` was `98.38%`.
+
+\begin{center}
+Figure 7: ROC Curve for spam.glm.m2 (Training)
+\end{center}
+
+```{r MB5, echo = F, fig.height = 5.75}
+par(pty = "s")
+plot(spam.glm.m2.trn.roc, col = "blue", main = "ROC Curve for spam.glm.m2")
+par(pty = "m")
+```
+
+__Conclusion__: The `Spam` dataset with natural log transformed predictor variables had a higher `AUC` value and accuracy on the training set. The real value is in out-of-sample fit, which is examined in the _Model Comparison_ section.
+
+## Decision Tree
+
+```{r MB6, include = F}
+#==============================================================================
+# Decision Tree Model
+#==============================================================================
+# Specify fit parameters
+spam.dt.fc = trainControl(method = "repeatedcv", 
+                          number = 10, 
+                          repeats = 3, 
+                          classProbs = T)
+
+#------------------------------------------------------------------------------
+# Model 1 | spam
+#------------------------------------------------------------------------------
+# Build model
+set.seed(123)
+spam.dt.m1 = train(y ~ ., 
+                   data = spam[spam.trn, ], 
+                   method = "rpart1SE", 
+                   trControl = spam.dt.fc)
+
+# Summary
+spam.dt.m1$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.dt.m1.trn.pred = predict(spam.dt.m1, newdata = spam[spam.trn, ], 
+                              type = "prob")[, 2]
+
+# Create ROC curve
+spam.dt.m1.trn.roc = roc(response = spam$y[spam.trn], 
+                         predictor = spam.dt.m1.trn.pred)
+spam.dt.m1.trn.auc = spam.dt.m1.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.dt.m1.trn.roc, col = "blue", main = "ROC Curve for spam.dt.m1")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.dt.m1.trn.pred = predict(spam.dt.m1, newdata = spam[spam.trn, ])
+spam.dt.m1.trn.cm = confusionMatrix(spam.dt.m1.trn.pred, 
+                                    spam$y[spam.trn])
+spam.dt.m1.trn.cm$overall[1]
+
+# Test
+spam.dt.m1.tst.pred = predict(spam.dt.m1, newdata = spam[spam.tst, ])
+spam.dt.m1.tst.cm = confusionMatrix(spam.dt.m1.tst.pred, 
+                                    spam$y[spam.tst])
+spam.dt.m1.tst.cm$overall[1]
+
+#------------------------------------------------------------------------------
+# Model 2 | log1p(spam)
+#------------------------------------------------------------------------------
+# Build model
+set.seed(123)
+spam.dt.m2 = train(y ~ ., 
+                   data = spam.log[spam.trn, ], 
+                   method = "rpart1SE", 
+                   trControl = spam.dt.fc)
+
+# Summary
+spam.dt.m2$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.dt.m2.trn.pred = predict(spam.dt.m2, newdata = spam.log[spam.trn, ], 
+                              type = "prob")[, 2]
+
+# Create ROC curve
+spam.dt.m2.trn.roc = roc(response = spam.log$y[spam.trn], 
+                         predictor = spam.dt.m2.trn.pred)
+spam.dt.m2.trn.auc = spam.dt.m2.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.dt.m2.trn.roc, col = "blue", main = "ROC Curve for spam.dt.m2")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.dt.m2.trn.pred = predict(spam.dt.m2, newdata = spam.log[spam.trn, ])
+spam.dt.m2.trn.cm = confusionMatrix(spam.dt.m2.trn.pred, 
+                                    spam.log$y[spam.trn])
+spam.dt.m2.trn.cm$overall[1]
+
+# Test
+spam.dt.m2.tst.pred = predict(spam.dt.m2, newdata = spam.log[spam.tst, ])
+spam.dt.m2.tst.cm = confusionMatrix(spam.dt.m2.tst.pred, 
+                                    spam.log$y[spam.tst])
+spam.dt.m2.tst.cm$overall[1]
+```
+
+For the `Decision Tree` model, both `M1` and `M2` were fit using 10-fold cross-validation repeated 3 times.
+
+Using the `Spam` dataset, the `M1` model was fit then pruned using the `1-SE` rule. The final model contained `7` terminal nodes. In-sample accuracy was `90.53%`.
+
+A `ROC` curve was produced for predictions on the _training_ dataset, with the idea of choosing an optimal threshold for classification based on an equal balance between sensitivity and specificity. Ultimately, that approach was not used. __Figure 8__ below shows the `ROC` curve for `M1` on the training dataset. The `AUC` of `M1` was `91.04%`.
+
+\begin{center}
+Figure 8: ROC Curve for spam.dt.m1 (Training)
+\end{center}
+
+```{r MB7, echo = F, fig.height = 5.75}
+par(pty = "s")
+plot(spam.dt.m1.trn.roc, col = "blue", main = "ROC Curve for spam.dt.m1")
+par(pty = "m")
+```
+
+__Conclusion__: Both versions of the `Spam` dataset produced the same in-sample accuracy values and `AUC`. To avoid redundancy, only `M1` is shown and discussed. The real value is in out-of-sample fit, which is examined in the _Model Comparison_ section. 
+
+## Support Vector Machine
+
+```{r MB8, include = F}
+#==============================================================================
+# Support Vector Machine
+#==============================================================================
+# Specify fit parameters
+spam.svm.fc = trainControl(method = "cv", 
+                           classProbs = T)
+
+#------------------------------------------------------------------------------
+# Model 1 | spam
+#------------------------------------------------------------------------------
+# Build model
+ptm = proc.time()
+set.seed(123)
+spam.svm.m1 = train(y ~ ., 
+                    data = spam[spam.trn, ], 
+                    method = "svmRadialWeights", 
+                    trControl = spam.svm.fc)
+proc.time() - ptm; rm(ptm)
+
+# Summary
+spam.svm.m1$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.svm.m1.trn.pred = predict(spam.svm.m1, newdata = spam[spam.trn, ], 
+                               type = "prob")[, 2]
+
+# Create ROC curve
+spam.svm.m1.trn.roc = roc(response = spam$y[spam.trn], 
+                          predictor = spam.svm.m1.trn.pred)
+spam.svm.m1.trn.auc = spam.svm.m1.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.svm.m1.trn.roc, col = "blue", main = "ROC Curve for spam.svm.m1")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.svm.m1.trn.pred = predict(spam.svm.m1, newdata = spam[spam.trn, ])
+spam.svm.m1.trn.cm = confusionMatrix(spam.svm.m1.trn.pred, 
+                                     spam$y[spam.trn])
+spam.svm.m1.trn.cm$overall[1]
+
+# Test
+spam.svm.m1.tst.pred = predict(spam.svm.m1, newdata = spam[spam.tst, ])
+spam.svm.m1.tst.cm = confusionMatrix(spam.svm.m1.tst.pred, 
+                                     spam$y[spam.tst])
+spam.svm.m1.tst.cm$overall[1]
+
+#------------------------------------------------------------------------------
+# Model 2 | log1p(spam)
+#------------------------------------------------------------------------------
+# Build model
+ptm = proc.time()
+set.seed(123)
+spam.svm.m2 = train(y ~ ., 
+                    data = spam.log[spam.trn, ], 
+                    method = "svmRadialWeights", 
+                    trControl = spam.svm.fc)
+proc.time() - ptm; rm(ptm)
+
+# Summary
+spam.svm.m2$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.svm.m2.trn.pred = predict(spam.svm.m2, newdata = spam.log[spam.trn, ], 
+                               type = "prob")[, 2]
+
+# Create ROC curve
+spam.svm.m2.trn.roc = roc(response = spam.log$y[spam.trn], 
+                          predictor = spam.svm.m2.trn.pred)
+spam.svm.m2.trn.auc = spam.svm.m2.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.svm.m2.trn.roc, col = "blue", main = "ROC Curve for spam.svm.m2")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.svm.m2.trn.pred = predict(spam.svm.m2, newdata = spam.log[spam.trn, ])
+spam.svm.m2.trn.cm = confusionMatrix(spam.svm.m2.trn.pred, 
+                                     spam.log$y[spam.trn])
+spam.svm.m2.trn.cm$overall[1]
+
+# Test
+spam.svm.m2.tst.pred = predict(spam.svm.m2, newdata = spam.log[spam.tst, ])
+spam.svm.m2.tst.cm = confusionMatrix(spam.svm.m2.tst.pred, 
+                                     spam.log$y[spam.tst])
+spam.svm.m2.tst.cm$overall[1]
+```
+
+For the `SVM` model, both `M1` and `M2` were fit using 10-fold cross-validation repeated 1 time. 
+
+Using the `Spam` dataset, the `M1` model was fit using radial class weights. There were `1049` support vectors. In-sample accuracy was `95.50%`.
+
+A `ROC` curve was produced for predictions on the _training_ dataset, with the idea of choosing an optimal threshold for classification based on an equal balance between sensitivity and specificity. Ultimately, that approach was not used. __Figure 9__ below shows the `ROC` curve for `M1` on the training dataset. The `AUC` of `M1` was `98.41%`.
+
+\begin{center}
+Figure 9: ROC Curve for spam.svm.m1 (Training)
+\end{center}
+
+```{r MB9, echo = F, fig.height = 5.75}
+par(pty = "s")
+plot(spam.svm.m1.trn.roc, col = "blue", main = "ROC Curve for spam.svm.m1")
+par(pty = "m")
+```
+
+Using the `Spam` dataset with natural log transformed predictor variables, the `M2` model was fit using radial class weights. There were `797` support vectors. In-sample accuracy was `95.58%`.
+
+A `ROC` curve was produced for predictions on the _training_ dataset, with the idea of choosing an optimal threshold for classification based on an equal balance between sensitivity and specificity. Ultimately, that approach was not used. __Figure 9__ below shows the `ROC` curve for `M1` on the training dataset. The `AUC` of `M2` was `98.64%`.
+
+\begin{center}
+Figure 10: ROC Curve for spam.svm.m2 (Training)
+\end{center}
+
+```{r MB10, echo = F, fig.height = 5.75}
+par(pty = "s")
+plot(spam.svm.m2.trn.roc, col = "blue", main = "ROC Curve for spam.svm.m2")
+par(pty = "m")
+```
+
+__Conclusion__: The `Spam` dataset with natural log transformed predictor variables had a higher `AUC` value and accuracy on the training set. The real value is in out-of-sample fit, which is examined in the _Model Comparison_ section.
+
+## Random Forest
+
+```{r MB11, include = F}
+#==============================================================================
+# Random Forest
+#==============================================================================
+# Specify fit parameters
+spam.rf.fc = trainControl(method = "cv", 
+                          classProbs = T)
+
+#------------------------------------------------------------------------------
+# Model 1 | spam
+#------------------------------------------------------------------------------
+# Build model
+ptm = proc.time()
+set.seed(123)
+spam.rf.m1 = train(y ~ ., 
+                   data = spam[spam.trn, ], 
+                   method = "rf", 
+                   trControl = spam.rf.fc)
+proc.time() - ptm; rm(ptm)
+
+# Summary
+spam.rf.m1$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.rf.m1.trn.pred = predict(spam.rf.m1, newdata = spam[spam.trn, ], 
+                              type = "prob")[, 2]
+
+# Create ROC curve
+spam.rf.m1.trn.roc = roc(response = spam$y[spam.trn], 
+                         predictor = spam.rf.m1.trn.pred)
+spam.rf.m1.trn.auc = spam.rf.m1.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.rf.m1.trn.roc, col = "blue", main = "ROC Curve for spam.rf.m1")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.rf.m1.trn.pred = predict(spam.rf.m1, newdata = spam[spam.trn, ])
+spam.rf.m1.trn.cm = confusionMatrix(spam.rf.m1.trn.pred, 
+                                    spam$y[spam.trn])
+spam.rf.m1.trn.cm$overall[1]
+
+# Test
+spam.rf.m1.tst.pred = predict(spam.rf.m1, newdata = spam[spam.tst, ])
+spam.rf.m1.tst.cm = confusionMatrix(spam.rf.m1.tst.pred, 
+                                    spam$y[spam.tst])
+spam.rf.m1.tst.cm$overall[1]
+
+#------------------------------------------------------------------------------
+# Model 2 | log1p(spam)
+#------------------------------------------------------------------------------
+# Build model
+ptm = proc.time()
+set.seed(123)
+spam.rf.m2 = train(y ~ ., 
+                   data = spam.log[spam.trn, ], 
+                   method = "rf", 
+                   trControl = spam.rf.fc)
+proc.time() - ptm; rm(ptm)
+
+# Summary
+spam.rf.m2$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.rf.m2.trn.pred = predict(spam.rf.m2, newdata = spam.log[spam.trn, ], 
+                              type = "prob")[, 2]
+
+# Create ROC curve
+spam.rf.m2.trn.roc = roc(response = spam.log$y[spam.trn], 
+                         predictor = spam.rf.m2.trn.pred)
+spam.rf.m2.trn.auc = spam.rf.m2.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.rf.m2.trn.roc, col = "blue", main = "ROC Curve for spam.rf.m2")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.rf.m2.trn.pred = predict(spam.rf.m2, newdata = spam.log[spam.trn, ])
+spam.rf.m2.trn.cm = confusionMatrix(spam.rf.m2.trn.pred, 
+                                    spam.log$y[spam.trn])
+spam.rf.m2.trn.cm$overall[1]
+
+# Test
+spam.rf.m2.tst.pred = predict(spam.rf.m2, newdata = spam.log[spam.tst, ])
+spam.rf.m2.tst.cm = confusionMatrix(spam.rf.m2.tst.pred, 
+                                    spam.log$y[spam.tst])
+spam.rf.m2.tst.cm$overall[1]
+```
+
+For the `Random Forest` model, both `M1` and `M2` were fit using 10-fold cross-validation repeated 1 time.
+
+Using the `Spam` dataset, the `M1` model was fit using `500` trees with `29` variables tried at each split. In-sample accuracy was `99.97%`. 
+
+A `ROC` curve was produced for predictions on the _training_ dataset, with the idea of choosing an optimal threshold for classification based on an equal balance between sensitivity and specificity. Ultimately, that approach was not used. __Figure 11__ below shows the `ROC` curve for `M1` on the training dataset. The `AUC` of `M1` was `100.00%`.
+
+\begin{center}
+Figure 11: ROC Curve for spam.rf.m1 (Training)
+\end{center}
+
+```{r MB12, echo = F, fig.height = 5.75}
+par(pty = "s")
+plot(spam.rf.m1.trn.roc, col = "blue", main = "ROC Curve for spam.rf.m1")
+par(pty = "m")
+```
+
+__Conclusion__: Both versions of the `Spam` dataset produced the same in-sample accuracy values and `AUC`. To avoid redundancy, only `M1` is shown and discussed. The real value is in out-of-sample fit, which is examined in the _Model Comparison_ section. 
+
+# Model Comparison
+
+This section compares the fit on the four models built in the _Model Construction_ subsection. Both in-sample and out-of-sample fit is assessed. __Table 4__ below shows a comparison of model fit. Out-of-sample accuracy is the selection criterion. Other criterion include minimizing `FP` (false positive), or maximizing the `AUC` on the out-of-sample data. 
+
+\begin{center}
+Table 4: Comparison of Model Fit by Type
+\end{center}
+
+```{r MC1, echo = F}
+#==============================================================================
+# Model Comparison
+#==============================================================================
+
+#--------------------------------------
+# Table Results
+#--------------------------------------
+# Model Types
+model.types = cbind(rep(c("Logistic (AVS)", 
+                          "Decision Tree", 
+                          "SVM", 
+                          "Random Forest"), 
+                        each = 2))
+
+# Model Names
+model.names = cbind(rep(c("M1: Spam", 
+                          "M2: log1p(Spam)"), 
+                        times = 4))
+
+# AUC, Train
+model.trn.auc = rbind(spam.glm.m1.trn.auc, 
+                      spam.glm.m2.trn.auc, 
+                      spam.dt.m1.trn.auc, 
+                      spam.dt.m2.trn.auc,
+                      spam.svm.m1.trn.auc, 
+                      spam.svm.m2.trn.auc,
+                      spam.rf.m1.trn.auc, 
+                      spam.rf.m2.trn.auc)
+
+# Accuracy, Train
+model.trn.acc = rbind(spam.glm.m1.trn.cm$overall[1], 
+                      spam.glm.m2.trn.cm$overall[1],
+                      spam.dt.m1.trn.cm$overall[1], 
+                      spam.dt.m2.trn.cm$overall[1],
+                      spam.svm.m1.trn.cm$overall[1], 
+                      spam.svm.m2.trn.cm$overall[1],
+                      spam.rf.m1.trn.cm$overall[1], 
+                      spam.rf.m2.trn.cm$overall[1])
+
+# Accuracy, Test
+model.tst.acc = rbind(spam.glm.m1.tst.cm$overall[1], 
+                      spam.glm.m2.tst.cm$overall[1],
+                      spam.dt.m1.tst.cm$overall[1], 
+                      spam.dt.m2.tst.cm$overall[1],
+                      spam.svm.m1.tst.cm$overall[1], 
+                      spam.svm.m2.tst.cm$overall[1],
+                      spam.rf.m1.tst.cm$overall[1], 
+                      spam.rf.m2.tst.cm$overall[1])
+
+# Data Frame
+model.comp = data.frame(model.types, 
+                        model.names, 
+                        model.trn.auc, 
+                        model.trn.acc, 
+                        model.tst.acc)
+rownames(model.comp) = 1:nrow(model.comp)
+colnames(model.comp) = c("Model Type", 
+                         "Model Name", 
+                         "Train: AUC", 
+                         "Train: Accuracy", 
+                         "Test: Accuracy")
+
+# Output
+pander(model.comp, caption = "", justify = "left")
+```
+
+By out-of-sample accuracy, the `Random Forest` model `M2` was the winner with the highest accuracy values in both the training and test set. `SVM` was second, and the `Logistic Regression` model took a very close third. The `Decision Tree` model finished last.
+
+# Conclusion & Next Steps
+
+While `Random Forest` models may be "black boxes", the predictive accuracy on the `Spam` dataset is clear. The `Logistic Regression` model performed much better than anticipated, despite it using a plethora of predictor variables (`M1` used `40`, while `M2` used `38`). 
+
+Prior to this assignment, I had not used or fit `SVM` models. For next steps, I would like to play with the hyperparameter settings to see how tuning them affects the various models, with `SVM` in particular. 
+
+Although the `Logistic Regression` model came in third place, the interpretability cannot be overlooked. This goes back to answering what we are solving for, and why. If the goal is to have the most accurate predictive model, then `Random forest` is the clear winner. If the goal is to have the most accurate _and interpretable_ predictive model, the `Logistic Regression` model gives it a good run for the money.
+
+\pagebreak
+
+## Appendix - Relevant R Code
+
+```{r Appendix, eval = F}
+#==============================================================================
+# Functions
+#==============================================================================
+
+#--------------------------------------
+# GitHub
+#--------------------------------------
+# Create function to source functions from GitHub
+source.GitHub = function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", 
+                                          "cacert.pem", package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url = "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+
+#--------------------------------------
+# RMSE
+#--------------------------------------
+rmse = function(pred, actual){
+    sqrt(mean((pred - actual)^2))
+}
+
+#--------------------------------------
+# Percent Change
+#--------------------------------------
+# Function to calculate percent change
+perc.change = function(y1, y2){
+    return((y2 - y1) / y1)
+}
+
+#==============================================================================
+# Data Import, Prep, and Staging
+#==============================================================================
+
+#--------------------------------------
+# Import
+#--------------------------------------
+# Read data
+spam = read.table("~/spambase.data", header = F, sep = ",")
+
+# Check dimensions
+dim(spam)
+
+# Check variable classes
+sapply(spam, class)
+
+# Summary statistics
+summary(spam)
+
+# Check for NAs
+colSums(is.na(spam))[colSums(is.na(spam)) > 0]
+
+#--------------------------------------
+# Prep
+#--------------------------------------
+# Recode integers to numeric
+spam[56:57] = lapply(spam[56:57], as.numeric)
+
+# Recode integers to factor
+spam$V58 = as.factor(spam$V58)
+
+# Set factor variable levels
+levels(spam$V58) = c("Not_Spam", "Spam")
+
+#--------------------------------------
+# Variable names
+#--------------------------------------
+
+# Store names
+spam.cn.all = c("word_freq_make", 
+                "word_freq_address", 
+                "word_freq_all", 
+                "word_freq_3d", 
+                "word_freq_our", 
+                "word_freq_over", 
+                "word_freq_remove", 
+                "word_freq_internet", 
+                "word_freq_order", 
+                "word_freq_mail", 
+                "word_freq_receive", 
+                "word_freq_will", 
+                "word_freq_people", 
+                "word_freq_report", 
+                "word_freq_addresses", 
+                "word_freq_free", 
+                "word_freq_business", 
+                "word_freq_email", 
+                "word_freq_you", 
+                "word_freq_credit", 
+                "word_freq_your", 
+                "word_freq_font", 
+                "word_freq_000", 
+                "word_freq_money", 
+                "word_freq_hp", 
+                "word_freq_hpl", 
+                "word_freq_george", 
+                "word_freq_650", 
+                "word_freq_lab", 
+                "word_freq_labs", 
+                "word_freq_telnet", 
+                "word_freq_857", 
+                "word_freq_data", 
+                "word_freq_415", 
+                "word_freq_85", 
+                "word_freq_technology", 
+                "word_freq_1999", 
+                "word_freq_parts", 
+                "word_freq_pm", 
+                "word_freq_direct", 
+                "word_freq_cs", 
+                "word_freq_meeting", 
+                "word_freq_original", 
+                "word_freq_project", 
+                "word_freq_re", 
+                "word_freq_edu", 
+                "word_freq_table", 
+                "word_freq_conference", 
+                "char_freq_semicolon", 
+                "char_freq_left_paren", 
+                "char_freq_left_bracket", 
+                "char_freq_exclamation", 
+                "char_freq_usd", 
+                "char_freq_pound", 
+                "capital_run_length_average", 
+                "capital_run_length_longest", 
+                "capital_run_length_total", 
+                "y")
+
+# Assign column names
+colnames(spam) = spam.cn.all
+
+#--------------------------------------
+# Staging
+#--------------------------------------
+# Store dataset name for use in titles, etc. later
+data.name <- "spam$"
+
+# Set response variable
+data.response <- "y"
+
+# Distribution of Response
+spam.dist = fac.freq(spam, "y", cat = F, save = T)
+
+#--------------------------------------
+# Transform
+#--------------------------------------
+# Create log transform of predictors
+spam.log = lapply(spam[1:57], log1p)
+spam.log = data.frame(spam.log, y = spam$y)
+
+#==============================================================================
+# Exploratory Data Analysis
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Traditional EDA - Quantitative
+#------------------------------------------------------------------------------
+fac.freq(spam, "y", cat = F)
+num.freq(spam, spam.cn.num, "y")
+
+#------------------------------------------------------------------------------
+# Traditional EDA - Qualitative
+#------------------------------------------------------------------------------
+# Boxplots by levels in response
+num.boxplot(spam.log, spam.cn.num, "y", vs = T)
+
+# Correlations by levels in response
+for (lvl in unique(spam$y)){
+    corrplot(cor(spam[spam$y == lvl, cn.num]), 
+             tl.col = "black", tl.cex = 0.8, tl.srt = 45, 
+             type = "lower")
+    rm(lvl)
+}
+
+#------------------------------------------------------------------------------
+# Model-Based EDA
+#------------------------------------------------------------------------------
+fancyRpartPlot(rpart(y ~ ., data = spam), sub = "", cex = 0.8)
+
+#==============================================================================
+# Model Build
+#==============================================================================
+
+# Random sample into 70/30 training-test split
+set.seed(123)
+spam.trn = createDataPartition(spam$y, p = 0.70, list = F)
+spam.tst = as.matrix(as.integer(rownames(spam))[-spam.trn])
+
+# Validate split
+length(spam.trn) / nrow(spam)
+
+# Specify fit parameters
+set.seed(123)
+spam.fc = trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+#==============================================================================
+# Logistic Regression
+#==============================================================================
+# Specify fit parameters
+spam.glm.fc = trainControl(method = "none", 
+                           classProbs = T)
+
+#------------------------------------------------------------------------------
+# Model 1 | spam
+#------------------------------------------------------------------------------
+# Build model
+set.seed(123)
+spam.glm.m1 = train(y ~ ., 
+                    data = spam[spam.trn, ], 
+                    method = "glmStepAIC", direction = "forward", 
+                    trControl = spam.glm.fc)
+
+# Summary
+spam.glm.m1$finalModel
+length(spam.glm.m1$finalModel$coefficients)-1
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.glm.m1.trn.pred = predict(spam.glm.m1, newdata = spam[spam.trn, ], 
+                               type = "prob")[, 2]
+
+# Create ROC curve
+spam.glm.m1.trn.roc = roc(response = spam$y[spam.trn], 
+                          predictor = spam.glm.m1.trn.pred)
+spam.glm.m1.trn.auc = spam.glm.m1.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.glm.m1.trn.roc, col = "blue", main = "ROC Curve for spam.glm.m1")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.glm.m1.trn.pred = predict(spam.glm.m1, newdata = spam[spam.trn, ])
+spam.glm.m1.trn.cm = confusionMatrix(spam.glm.m1.trn.pred, 
+                                     spam$y[spam.trn])
+spam.glm.m1.trn.cm$overall[1]
+
+# Test
+spam.glm.m1.tst.pred = predict(spam.glm.m1, newdata = spam[spam.tst, ])
+spam.glm.m1.tst.cm = confusionMatrix(spam.glm.m1.tst.pred, 
+                                     spam$y[spam.tst])
+spam.glm.m1.tst.cm$overall[1]
+
+#------------------------------------------------------------------------------
+# Model 2 | log1p(spam)
+#------------------------------------------------------------------------------
+# Build model
+set.seed(123)
+spam.glm.m2 = train(y ~ ., 
+                    data = spam.log[spam.trn, ], 
+                    method = "glmStepAIC", direction = "forward", 
+                    trControl = spam.glm.fc)
+
+# Summary
+spam.glm.m2$finalModel
+length(spam.glm.m2$finalModel$coefficients)-1
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.glm.m2.trn.pred = predict(spam.glm.m2, newdata = spam.log[spam.trn, ], 
+                               type = "prob")[, 2]
+
+# Create ROC curve
+spam.glm.m2.trn.roc = roc(response = spam.log$y[spam.trn], 
+                          predictor = spam.glm.m2.trn.pred)
+spam.glm.m2.trn.auc = spam.glm.m2.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.glm.m2.trn.roc, col = "blue", main = "ROC Curve for spam.glm.m2")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.glm.m2.trn.pred = predict(spam.glm.m2, newdata = spam.log[spam.trn, ])
+spam.glm.m2.trn.cm = confusionMatrix(spam.glm.m2.trn.pred, 
+                                     spam.log$y[spam.trn])
+spam.glm.m2.trn.cm$overall[1]
+
+# Test
+spam.glm.m2.tst.pred = predict(spam.glm.m2, newdata = spam.log[spam.tst, ])
+spam.glm.m2.tst.cm = confusionMatrix(spam.glm.m2.tst.pred, 
+                                     spam.log$y[spam.tst])
+spam.glm.m2.tst.cm$overall[1]
+
+#==============================================================================
+# Decision Tree Model
+#==============================================================================
+# Specify fit parameters
+spam.dt.fc = trainControl(method = "repeatedcv", 
+                          number = 10, 
+                          repeats = 3, 
+                          classProbs = T)
+
+#------------------------------------------------------------------------------
+# Model 1 | spam
+#------------------------------------------------------------------------------
+# Build model
+set.seed(123)
+spam.dt.m1 = train(y ~ ., 
+                   data = spam[spam.trn, ], 
+                   method = "rpart1SE", 
+                   trControl = spam.dt.fc)
+
+# Summary
+spam.dt.m1$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.dt.m1.trn.pred = predict(spam.dt.m1, newdata = spam[spam.trn, ], 
+                              type = "prob")[, 2]
+
+# Create ROC curve
+spam.dt.m1.trn.roc = roc(response = spam$y[spam.trn], 
+                         predictor = spam.dt.m1.trn.pred)
+spam.dt.m1.trn.auc = spam.dt.m1.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.dt.m1.trn.roc, col = "blue", main = "ROC Curve for spam.dt.m1")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.dt.m1.trn.pred = predict(spam.dt.m1, newdata = spam[spam.trn, ])
+spam.dt.m1.trn.cm = confusionMatrix(spam.dt.m1.trn.pred, 
+                                    spam$y[spam.trn])
+spam.dt.m1.trn.cm$overall[1]
+
+# Test
+spam.dt.m1.tst.pred = predict(spam.dt.m1, newdata = spam[spam.tst, ])
+spam.dt.m1.tst.cm = confusionMatrix(spam.dt.m1.tst.pred, 
+                                    spam$y[spam.tst])
+spam.dt.m1.tst.cm$overall[1]
+
+#------------------------------------------------------------------------------
+# Model 2 | log1p(spam)
+#------------------------------------------------------------------------------
+# Build model
+set.seed(123)
+spam.dt.m2 = train(y ~ ., 
+                   data = spam.log[spam.trn, ], 
+                   method = "rpart1SE", 
+                   trControl = spam.dt.fc)
+
+# Summary
+spam.dt.m2$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.dt.m2.trn.pred = predict(spam.dt.m2, newdata = spam.log[spam.trn, ], 
+                              type = "prob")[, 2]
+
+# Create ROC curve
+spam.dt.m2.trn.roc = roc(response = spam.log$y[spam.trn], 
+                         predictor = spam.dt.m2.trn.pred)
+spam.dt.m2.trn.auc = spam.dt.m2.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.dt.m2.trn.roc, col = "blue", main = "ROC Curve for spam.dt.m2")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.dt.m2.trn.pred = predict(spam.dt.m2, newdata = spam.log[spam.trn, ])
+spam.dt.m2.trn.cm = confusionMatrix(spam.dt.m2.trn.pred, 
+                                    spam.log$y[spam.trn])
+spam.dt.m2.trn.cm$overall[1]
+
+# Test
+spam.dt.m2.tst.pred = predict(spam.dt.m2, newdata = spam.log[spam.tst, ])
+spam.dt.m2.tst.cm = confusionMatrix(spam.dt.m2.tst.pred, 
+                                    spam.log$y[spam.tst])
+spam.dt.m2.tst.cm$overall[1]
+
+#==============================================================================
+# Support Vector Machine
+#==============================================================================
+# Specify fit parameters
+spam.svm.fc = trainControl(method = "cv", 
+                           classProbs = T)
+
+#------------------------------------------------------------------------------
+# Model 1 | spam
+#------------------------------------------------------------------------------
+# Build model
+set.seed(123)
+spam.svm.m1 = train(y ~ ., 
+                    data = spam[spam.trn, ], 
+                    method = "rpart1SE", 
+                    trControl = spam.svm.fc)
+
+# Summary
+spam.svm.m1$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.svm.m1.trn.pred = predict(spam.svm.m1, newdata = spam[spam.trn, ], 
+                               type = "prob")[, 2]
+
+# Create ROC curve
+spam.svm.m1.trn.roc = roc(response = spam$y[spam.trn], 
+                          predictor = spam.svm.m1.trn.pred)
+spam.svm.m1.trn.auc = spam.svm.m1.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.svm.m1.trn.roc, col = "blue", main = "ROC Curve for spam.svm.m1")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.svm.m1.trn.pred = predict(spam.svm.m1, newdata = spam[spam.trn, ])
+spam.svm.m1.trn.cm = confusionMatrix(spam.svm.m1.trn.pred, 
+                                     spam$y[spam.trn])
+spam.svm.m1.trn.cm$overall[1]
+
+# Test
+spam.svm.m1.tst.pred = predict(spam.svm.m1, newdata = spam[spam.tst, ])
+spam.svm.m1.tst.cm = confusionMatrix(spam.svm.m1.tst.pred, 
+                                     spam$y[spam.tst])
+spam.svm.m1.tst.cm$overall[1]
+
+#------------------------------------------------------------------------------
+# Model 2 | log1p(spam)
+#------------------------------------------------------------------------------
+# Build model
+set.seed(123)
+spam.svm.m2 = train(y ~ ., 
+                    data = spam.log[spam.trn, ], 
+                    method = "rpart1SE", 
+                    trControl = spam.svm.fc)
+
+# Summary
+spam.svm.m2$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.svm.m2.trn.pred = predict(spam.svm.m2, newdata = spam.log[spam.trn, ], 
+                               type = "prob")[, 2]
+
+# Create ROC curve
+spam.svm.m2.trn.roc = roc(response = spam.log$y[spam.trn], 
+                          predictor = spam.svm.m2.trn.pred)
+spam.svm.m2.trn.auc = spam.svm.m2.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.svm.m2.trn.roc, col = "blue", main = "ROC Curve for spam.svm.m2")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.svm.m2.trn.pred = predict(spam.svm.m2, newdata = spam.log[spam.trn, ])
+spam.svm.m2.trn.cm = confusionMatrix(spam.svm.m2.trn.pred, 
+                                     spam.log$y[spam.trn])
+spam.svm.m2.trn.cm$overall[1]
+
+# Test
+spam.svm.m2.tst.pred = predict(spam.svm.m2, newdata = spam.log[spam.tst, ])
+spam.svm.m2.tst.cm = confusionMatrix(spam.svm.m2.tst.pred, 
+                                     spam.log$y[spam.tst])
+spam.svm.m2.tst.cm$overall[1]
+
+#==============================================================================
+# Random Forest
+#==============================================================================
+# Specify fit parameters
+spam.rf.fc = trainControl(method = "repeatedcv", 
+                          number = 10, 
+                          repeats = 3, 
+                          classProbs = T)
+
+#------------------------------------------------------------------------------
+# Model 1 | spam
+#------------------------------------------------------------------------------
+# Build model
+registerDoParallel(2)
+ptm = proc.time()
+set.seed(123)
+spam.rf.m1 = train(y ~ ., 
+                   data = spam[spam.trn, ], 
+                   method = "parRF", 
+                   trControl = spam.rf.fc)
+proc.time() - ptm; rm(ptm)
+closeAllConnections()
+
+# Summary
+spam.rf.m1$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.rf.m1.trn.pred = predict(spam.rf.m1, newdata = spam[spam.trn, ], 
+                              type = "prob")[, 2]
+
+# Create ROC curve
+spam.rf.m1.trn.roc = roc(response = spam$y[spam.trn], 
+                         predictor = spam.rf.m1.trn.pred)
+spam.rf.m1.trn.auc = spam.rf.m1.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.rf.m1.trn.roc, col = "blue", main = "ROC Curve for spam.rf.m1")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.rf.m1.trn.pred = predict(spam.rf.m1, newdata = spam[spam.trn, ])
+spam.rf.m1.trn.cm = confusionMatrix(spam.rf.m1.trn.pred, 
+                                    spam$y[spam.trn])
+spam.rf.m1.trn.cm$overall[1]
+
+# Test
+spam.rf.m1.tst.pred = predict(spam.rf.m1, newdata = spam[spam.tst, ])
+spam.rf.m1.tst.cm = confusionMatrix(spam.rf.m1.tst.pred, 
+                                    spam$y[spam.tst])
+spam.rf.m1.tst.cm$overall[1]
+
+#------------------------------------------------------------------------------
+# Model 2 | log1p(spam)
+#------------------------------------------------------------------------------
+# Build model
+registerDoParallel(2)
+ptm = proc.time()
+set.seed(123)
+spam.rf.m2 = train(y ~ ., 
+                   data = spam.log[spam.trn, ], 
+                   method = "parRF", 
+                   trControl = spam.rf.fc)
+proc.time() - ptm; rm(ptm)
+closeAllConnections()
+
+# Summary
+spam.rf.m2$finalModel
+
+#--------------------------------------
+# ROC curve
+#--------------------------------------
+# Predict on train
+spam.rf.m2.trn.pred = predict(spam.rf.m2, newdata = spam.log[spam.trn, ], 
+                              type = "prob")[, 2]
+
+# Create ROC curve
+spam.rf.m2.trn.roc = roc(response = spam.log$y[spam.trn], 
+                         predictor = spam.rf.m2.trn.pred)
+spam.rf.m2.trn.auc = spam.rf.m2.trn.roc$auc[1]
+
+# Plot ROC curve
+par(pty = "s")
+plot(spam.rf.m2.trn.roc, col = "blue", main = "ROC Curve for spam.rf.m2")
+par(pty = "m")
+
+#--------------------------------------
+# Confusion matrix
+#--------------------------------------
+# Training
+spam.rf.m2.trn.pred = predict(spam.rf.m2, newdata = spam.log[spam.trn, ])
+spam.rf.m2.trn.cm = confusionMatrix(spam.rf.m2.trn.pred, 
+                                    spam.log$y[spam.trn])
+spam.rf.m2.trn.cm$overall[1]
+
+# Test
+spam.rf.m2.tst.pred = predict(spam.rf.m2, newdata = spam.log[spam.tst, ])
+spam.rf.m2.tst.cm = confusionMatrix(spam.rf.m2.tst.pred, 
+                                    spam.log$y[spam.tst])
+spam.rf.m2.tst.cm$overall[1]
+
+#==============================================================================
+# Model Comparison
+#==============================================================================
+
+#--------------------------------------
+# Table Results
+#--------------------------------------
+# Model Types
+model.types = cbind(rep(c("Logistic (AVS)", 
+                          "Decision Tree", 
+                          "SVM", 
+                          "Random Forest"), 
+                        each = 2))
+
+# Model Names
+model.names = cbind(rep(c("M1: Spam", 
+                          "M2: log1p(Spam)"), 
+                        times = 4))
+
+# AUC, Train
+model.trn.auc = rbind(spam.glm.m1.trn.auc, 
+                      spam.glm.m2.trn.auc, 
+                      spam.dt.m1.trn.auc, 
+                      spam.dt.m2.trn.auc,
+                      spam.svm.m1.trn.auc, 
+                      spam.svm.m2.trn.auc,
+                      spam.rf.m1.trn.auc, 
+                      spam.rf.m2.trn.auc)
+
+# Accuracy, Train
+model.trn.acc = rbind(spam.glm.m1.trn.cm$overall[1], 
+                      spam.glm.m2.trn.cm$overall[1],
+                      spam.dt.m1.trn.cm$overall[1], 
+                      spam.dt.m2.trn.cm$overall[1],
+                      spam.svm.m1.trn.cm$overall[1], 
+                      spam.svm.m2.trn.cm$overall[1],
+                      spam.rf.m1.trn.cm$overall[1], 
+                      spam.rf.m2.trn.cm$overall[1])
+
+# Accuracy, Test
+model.tst.acc = rbind(spam.glm.m1.tst.cm$overall[1], 
+                      spam.glm.m2.tst.cm$overall[1],
+                      spam.dt.m1.tst.cm$overall[1], 
+                      spam.dt.m2.tst.cm$overall[1],
+                      spam.svm.m1.tst.cm$overall[1], 
+                      spam.svm.m2.tst.cm$overall[1],
+                      spam.rf.m1.tst.cm$overall[1], 
+                      spam.rf.m2.tst.cm$overall[1])
+
+# Data Frame
+model.comp = data.frame(model.types, 
+                        model.names, 
+                        model.trn.auc, 
+                        model.trn.acc, 
+                        model.tst.acc)
+rownames(model.comp) = 1:nrow(model.comp)
+colnames(model.comp) = c("Model Type", 
+                         "Model Name", 
+                         "Train: AUC", 
+                         "Train: Accuracy", 
+                         "Test: Accuracy")
+```
+
+```{r FIN, echo = F}
+# FIN
+sessionInfo()
+```
