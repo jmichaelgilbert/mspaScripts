@@ -1463,11 +1463,13 @@ spam.svm.fc = trainControl(method = "cv",
 # Model 1 | spam
 #------------------------------------------------------------------------------
 # Build model
+ptm = proc.time()
 set.seed(123)
 spam.svm.m1 = train(y ~ ., 
                     data = spam[spam.trn, ], 
-                    method = "rpart1SE", 
+                    method = "svmRadialWeights", 
                     trControl = spam.svm.fc)
+proc.time() - ptm; rm(ptm)
 
 # Summary
 spam.svm.m1$finalModel
@@ -1508,11 +1510,13 @@ spam.svm.m1.tst.cm$overall[1]
 # Model 2 | log1p(spam)
 #------------------------------------------------------------------------------
 # Build model
+ptm = proc.time()
 set.seed(123)
 spam.svm.m2 = train(y ~ ., 
                     data = spam.log[spam.trn, ], 
-                    method = "rpart1SE", 
+                    method = "svmRadialWeights", 
                     trControl = spam.svm.fc)
+proc.time() - ptm; rm(ptm)
 
 # Summary
 spam.svm.m2$finalModel
@@ -1553,24 +1557,20 @@ spam.svm.m2.tst.cm$overall[1]
 # Random Forest
 #==============================================================================
 # Specify fit parameters
-spam.rf.fc = trainControl(method = "repeatedcv", 
-                          number = 10, 
-                          repeats = 3, 
+spam.rf.fc = trainControl(method = "cv", 
                           classProbs = T)
 
 #------------------------------------------------------------------------------
 # Model 1 | spam
 #------------------------------------------------------------------------------
 # Build model
-registerDoParallel(2)
 ptm = proc.time()
 set.seed(123)
 spam.rf.m1 = train(y ~ ., 
                    data = spam[spam.trn, ], 
-                   method = "parRF", 
+                   method = "rf", 
                    trControl = spam.rf.fc)
 proc.time() - ptm; rm(ptm)
-closeAllConnections()
 
 # Summary
 spam.rf.m1$finalModel
@@ -1611,15 +1611,13 @@ spam.rf.m1.tst.cm$overall[1]
 # Model 2 | log1p(spam)
 #------------------------------------------------------------------------------
 # Build model
-registerDoParallel(2)
 ptm = proc.time()
 set.seed(123)
 spam.rf.m2 = train(y ~ ., 
                    data = spam.log[spam.trn, ], 
-                   method = "parRF", 
+                   method = "rf", 
                    trControl = spam.rf.fc)
 proc.time() - ptm; rm(ptm)
-closeAllConnections()
 
 # Summary
 spam.rf.m2$finalModel
