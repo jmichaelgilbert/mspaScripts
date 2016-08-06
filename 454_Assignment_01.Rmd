@@ -106,7 +106,7 @@ The dimensions of the `Wine` data set indicate there are `178` observations and 
 Table 1: Variable Classes in `Wine` Data Set
 \end{center}
 
-```{r DQC.1, echo = F}
+```{r DQC1, echo = F}
 pander(t(as.data.frame(lapply(wine, class))), justify = "left")
 ```
 
@@ -118,7 +118,7 @@ __Table 2__ below shows summary statistics for each variable in the `Wine` data 
 Table 2: Summary Statistics of `Wine` Variables
 \end{center}
 
-```{r DQC.2, echo = F}
+```{r DQC2, echo = F}
 pander(summary(wine[1:5]), caption = "", justify = "left")
 pander(summary(wine[6:9]), caption = "", justify = "left")
 pander(summary(wine[10:14]), caption = "", justify = "left")
@@ -136,7 +136,7 @@ One quantitative method to detect potential outliers for `numeric` variables is 
 Table 3: Select Percentile Values of `Wine` Variables
 \end{center}
 
-```{r DQC.3, echo = F}
+```{r DQC3, echo = F}
 pander(quantiles(wine), caption = "", justify = "left")
 ```
 
@@ -148,7 +148,7 @@ From __Table 3__ above, the `Proline` variable looks to contain a potential outl
 Figure 1: Boxplot of `Proline`
 \end{center}
 
-```{r DQC.4, echo = F, out.width = "0.55\\linewidth"}
+```{r DQC4, echo = F, out.width = "0.55\\linewidth"}
 settings = list(box.rectangle = list(col = "black", fill = "beige"), 
                 box.umbrella = list(col = "black"),
                 plot.symbol = list(col = "black"))
@@ -160,7 +160,7 @@ rm(settings)
 Figure 2: Histogram of `Proline`
 \end{center}
 
-```{r DQC.5, echo = F, out.width = "0.55\\linewidth"}
+```{r DQC5, echo = F, out.width = "0.55\\linewidth"}
 histogram(~ Proline, data = wine, col = "beige")
 ```
 
@@ -188,7 +188,7 @@ __Figure 3__ is a histogram of the variable `OD280_OD315`, which shows a differe
 Figure 3: Histogram of `OD280\_OD315`
 \end{center}
 
-```{r EDA.1, echo = F, out.width = "0.55\\linewidth"}
+```{r EDA1, echo = F, out.width = "0.55\\linewidth"}
 histogram(~ OD280_OD315 | Class, data = wine, 
           layout = c(3, 1), col = "beige")
 ```
@@ -197,7 +197,7 @@ histogram(~ OD280_OD315 | Class, data = wine,
 Figure 4: Boxplot of `Phenols\_Nonflavanoid``OD280\_OD315`
 \end{center}
 
-```{r EDA.2, echo = F, out.width = "0.55\\linewidth"}
+```{r EDA2, echo = F, out.width = "0.55\\linewidth"}
 settings = list(box.rectangle = list(col = "black", fill = "beige"), 
                 box.umbrella = list(col = "black"),
                 plot.symbol = list(col = "black"))
@@ -214,7 +214,7 @@ __Figure 5__ below looks at the response variable where `Class = 1`. Here, stron
 Figure 5: Correlation Plot of `Class = 1`
 \end{center}
 
-```{r EDA.3, echo = F}
+```{r EDA3, echo = F}
 corrplot(cor(wine[wine$Class == 1, cn.num]), 
          tl.col = "black", tl.cex = 0.8, tl.srt = 45)
 ```
@@ -225,7 +225,7 @@ __Figure 6__ below looks at the response variable where `Class = 2`. Here, stron
 Figure 6: Correlation Plot of `Class = 2`
 \end{center}
 
-```{r EDA.4, echo = F}
+```{r EDA4, echo = F}
 corrplot(cor(wine[wine$Class == 2, cn.num]), 
          tl.col = "black", tl.cex = 0.8, tl.srt = 45)
 ```
@@ -236,7 +236,7 @@ __Figure 7__ below looks at the response variable where `Class = 3`. Here, `Flav
 Figure 7: Correlation Plot of `Class = 3`
 \end{center}
 
-```{r EDA.5, echo = F}
+```{r EDA5, echo = F}
 corrplot(cor(wine[wine$Class == 3, cn.num]), 
          tl.col = "black", tl.cex = 0.8, tl.srt = 45)
 ```
@@ -253,7 +253,7 @@ The first node is colored blue, because 40% of the rows in the `Wine` data set c
 Figure 8: Tree plot of `Wine` Data Set
 \end{center}
 
-```{r EDA.6, echo = F}
+```{r EDA6, echo = F}
 fancyRpartPlot(rpart(wine$Class ~ ., data = wine), sub = "")
 ```
 
@@ -273,7 +273,7 @@ The `LDA` model was fit to the response variable `Class` using all available pre
 Figure 9: Plot of Linear Discriminants for Naive `LDA` Model
 \end{center}
 
-```{r MBEDA.1, echo = F}
+```{r MBEDA1, echo = F}
 #--------------------------------------
 # Linear Discriminant Analysis
 #--------------------------------------
@@ -287,7 +287,7 @@ The `PCA` model was fit (with scaled variables) to the response variable `Class`
 Figure 10: Biplot for Naive `PCA` Model
 \end{center}
 
-```{r MBEDA.2, echo = F}
+```{r MBEDA2, echo = F}
 #--------------------------------------
 # Principal Components Analysis
 #--------------------------------------
