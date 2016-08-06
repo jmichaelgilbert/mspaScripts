@@ -88,7 +88,7 @@ This report contains five sections:
 4. Model Comparison
 5. Conclusion & Next Steps
 
-An appendix of relevant `R` code used in producing the report is included. The code is grouped by the same four sections.
+An appendix of relevant `R` code used in producing the report is included. The code is grouped by the same sections.
 
 ```{r DIPS1, include = F}
 #==============================================================================
@@ -99,7 +99,7 @@ An appendix of relevant `R` code used in producing the report is included. The c
 # Import
 #--------------------------------------
 # Read data
-spam = read.table("~/spambase.data", header = F, sep = ",")
+spam = read.table("spambase.data", header = F, sep = ",")
 
 # Check dimensions
 dim(spam)
@@ -231,7 +231,7 @@ The distribution of the response variable `y` is shown in __Table 1__ below. The
 Table 1: Distribution of Response in Spam Dataset
 \end{center}
 
-```{r EDA1, echo = F}
+```{r DQC1, echo = F}
 pander(spam.dist, caption = "", justify = "left")
 ```
 
@@ -251,7 +251,7 @@ __Table 2__ below contains all attribute names under the convention described ab
 Table 2: Attribute names for Spam Dataset
 \end{center}
 
-```{r EDA2, echo = F}
+```{r DQC2, echo = F}
 pander(as.data.frame(colnames(spam)), caption = "", justify = "left")
 ```
 
@@ -320,7 +320,7 @@ Five boxplots are included below. Each shows class distinction between `Not_Spam
 Figure 1: Boxplots of word\_freq\_free by Response Class
 \end{center}
 
-```{r EDA3, echo = F}
+```{r EDA1, echo = F}
 num.boxplot(spam.log, "word_freq_free", "y", vs = T)
 ```
 
@@ -328,7 +328,7 @@ num.boxplot(spam.log, "word_freq_free", "y", vs = T)
 Figure 2: Boxplots of word\_freq\_your by Response Class
 \end{center}
 
-```{r EDA4, echo = F}
+```{r EDA2, echo = F}
 num.boxplot(spam.log, "word_freq_your", "y", vs = T)
 ```
 
@@ -336,7 +336,7 @@ num.boxplot(spam.log, "word_freq_your", "y", vs = T)
 Figure 3: Boxplots of word\_freq\_hp by Response Class
 \end{center}
 
-```{r EDA5, echo = F}
+```{r EDA3, echo = F}
 num.boxplot(spam.log, "word_freq_hp", "y", vs = T)
 ```
 
@@ -344,7 +344,7 @@ num.boxplot(spam.log, "word_freq_hp", "y", vs = T)
 Figure 4: Boxplots of capital\_run\_length\_longest by Response Class
 \end{center}
 
-```{r EDA6, echo = F}
+```{r EDA4, echo = F}
 num.boxplot(spam.log, "capital_run_length_longest", "y", vs = T)
 ```
 
@@ -352,7 +352,7 @@ num.boxplot(spam.log, "capital_run_length_longest", "y", vs = T)
 Figure 5: Boxplots of capital\_run\_length\_total by Response Class
 \end{center}
 
-```{r EDA7, echo = F}
+```{r EDA5, echo = F}
 num.boxplot(spam.log, "capital_run_length_total", "y", vs = T)
 ```
 
@@ -376,7 +376,7 @@ The first node is the root node. The root node is colored green, because 61% of 
 Figure 6: Naive Tree Plot of Spam Dataset
 \end{center}
 
-```{r EDA8, echo = F, fig.height = 6.5}
+```{r EDA6, echo = F, fig.height = 6.5}
 fancyRpartPlot(rpart(spam$y ~ ., data = spam), sub = "", cex = 0.7)
 ```
 
