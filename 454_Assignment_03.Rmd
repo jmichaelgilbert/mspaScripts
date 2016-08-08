@@ -1053,8 +1053,28 @@ Although the `Logistic Regression` model came in third place, the interpretabili
 
 ```{r Appendix, eval = F}
 #==============================================================================
-# Functions
+# Enviornment Prep
 #==============================================================================
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(caret)
+library(doParallel)
+library(pander)
+library(pROC)
+library(rattle)
+library(rpart)
+
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+#------------------------------------------------------------------------------
+# Functions
+#------------------------------------------------------------------------------
 
 #--------------------------------------
 # GitHub
@@ -1097,7 +1117,7 @@ perc.change = function(y1, y2){
 # Import
 #--------------------------------------
 # Read data
-spam = read.table("~/spambase.data", header = F, sep = ",")
+spam = read.table("spambase.data", header = F, sep = ",")
 
 # Check dimensions
 dim(spam)
