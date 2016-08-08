@@ -1420,6 +1420,9 @@ knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
 # Set all figures to be centered
 knitr::opts_chunk$set(fig.align = "center")
 
+# Set echo to off
+knitr::opts_chunk$set(echo = F)
+
 #------------------------------------------------------------------------------
 # Functions
 #------------------------------------------------------------------------------
