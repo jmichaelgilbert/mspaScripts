@@ -1,0 +1,2162 @@
+---
+title: "454_Assignment_04"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  pdf_document: default
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+    number_sections: yes
+geometry: margin = 0.5in
+---
+\
+```{r setup_R, include = F, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(caret)
+library(MASS)
+library(pander)
+library(randomForest)
+library(rattle)
+library(rpart)
+```
+
+```{r setup_knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set echo to off
+knitr::opts_chunk$set(echo = F)
+```
+
+```{r setup_FUN, include = F}
+#--------------------------------------
+# GitHub
+#--------------------------------------
+# Create function to source functions from GitHub
+source.GitHub = function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", 
+                                          "cacert.pem", package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url = "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+```
+
+# Introduction
+
+The purpose of this report is to build on previous work in the `Assignment 01` report; namely to fit a model suite to the `wine` dataset. Although this report is an extension of the `Assignment 01` report, some relevant information is repeated herein. Both the data set and metadata (names) file are available for download [here](http://archive.ics.uci.edu/ml/datasets/Wine).
+
+This report contains five sections:
+
+1. Data Quality Check
+2. Exploratory Data Analysis
+3. Model Build
+4. Model Comparison
+5. Conclusion & Next Steps
+
+An appendix of relevant `R` code used in producing the report is included. The code is grouped by the same sections.
+
+```{r DIP1, include = F}
+#==============================================================================
+# Data Import & Prep
+#==============================================================================
+# Read data
+wine = read.csv("~/wine.data", header = F)
+
+# Assign column names
+colnames(wine) = c("class",
+                   "alcohol",
+                   "malic_acid",
+                   "ash",
+                   "ash_alcalinity",
+                   "magnesium",
+                   "phenols_total",
+                   "flavanoids",
+                   "phenols_nonflavanoid",
+                   "proanthocyanins",
+                   "color_intensity",
+                   "hue",
+                   "OD280_OD315",
+                   "proline")
+
+# Check variable classes and head
+str(wine)
+
+# Recode integers to numeric
+wine$magnesium = as.numeric(wine$magnesium)
+wine$proline = as.numeric(wine$proline)
+
+# Recode wine$class as factor
+wine$class = as.factor(wine$class)
+
+# Rename wine classes
+levels(wine$class) = c("class_1", "class_2", "class_3")
+```
+
+# Data Quality Check
+
+```{r DQC1, include = F}
+#==============================================================================
+# Data Quality Check
+#==============================================================================
+# Check variable classes and head
+str(wine)
+
+# Summary statistics
+summary(wine)
+
+# Class frequencies
+wine.freq = fac.freq(wine$class, cat = F)
+
+# Down sample to balance classes
+set.seed(123)
+wine.ds = downSample(x = wine[, -1],
+                     y = wine[, 1])
+
+# Rename class variable
+colnames(wine.ds)[colnames(wine.ds)=="Class"] = "class"
+
+# Check class frequencies
+wine.ds.freq = fac.freq(wine.ds$class, cat = F)
+```
+
+From the `wine` metadata file, the response variable is the class identifier, `class`. The response variable is a categorical or factor variable, with classes `1`, `2`, and `3`. Each class corresponds to a different cultivar of wine. Other variables (or attributes) reflect different constituents found in each type of wine. The values of those variables are the results (quantities) of a chemical analysis for each observation. 
+
+The dimensions of the `Wine` dataset indicate there are `178` observations and `14` variables, including the response variable `class`. The variable `class` was recoded from `integer()` to `factor()`, while the variables `magnesium` and `proline` were recoded from `integer()` to `numeric()`. Lastly, the levels of `class` were recoded from `1`, `2`, and `3` to `class_1`, `class_2`, and `class_3`.
+
+The distribution of the response variable `class` is shown in __Table 1__ below. The levels of the response variable are not balanced (i.e. evenly distributed).
+
+\begin{center}
+Table 1: Distribution of Response in Wine Dataset - Original
+\end{center}
+
+```{r DQC2}
+pander(wine.freq, caption = "", justify = "left")
+```
+
+Due to the unbalanced classes, the `wine` dataset was cloned and `down sampled` using stratified random sampling to achieve class balance. This dataset is referred to as `wine.ds`, where `ds` stands for `down sampled`. __Table 2__ below shows the distribution of the response variable `class` in `wine.ds`. There are `144` observations and `14` variables; the levels in the response variable `class` are balanced, each appearing $1/3$ of the time. 
+
+\begin{center}
+Table 2: Distribution of Response in Wine Dataset - Down Sampled
+\end{center}
+
+```{r DQC3}
+pander(wine.ds.freq, caption = "", justify = "left")
+```
+
+Summary statistics, and discussion on missing values and/or outliers are not repeated here. Please reference the appendix for related code, or the `Assignment 01` report for discussion. 
+
+# Exploratory Data Analysis
+
+After the initial data quality check, data are further examined to identify interesting information or detect interesting relationships. That process is known as Exploratory Data Analysis or EDA. 
+
+The type of EDA conducted depends on the statistical problem at hand: is it one of `regression`, or one of `classification`? The statistical problem faced with the `wine` dataset is one of `classification`. 
+
+The response variable, `class`, takes on three possible classes: `class_1`, `class_2`, or `class_3`. The appropriate EDA in this situation centers on interesting information or relationships by each of these classes, through both quantitative and qualitative means.
+
+It is also important to understand what might _not_ be useful. Scatterplots are not useful. However, boxplots and histograms can be useful, as can summary statistics by class, and variable correlations by class. 
+
+## Traditional EDA
+
+Traditional EDA covers quantitative and qualitative means. For the `wine` dataset:
+
+* _Traditional EDA - Quantitative_ included summary statistics across all classes, summary statistics by each class, and decile values of each `numeric` variable. Summary statistics for `numeric` variables included min, 1st quartile, median, mean, 3rd quartile, and max. Summary statistics for `factor` variables included counts by level.
+
+* _Traditional EDA - Qualitative_ included side-by-side histograms for each variable by class, side-by-side boxplots for each variable by class, and correlation plots by each class. The latter was done as a crude means to see which variables are correlated with each other - and how that relationship differs - by class.
+
+Results from Traditional EDA are excluded here. Please reference the appendix for related code, or the `Assignment 01` report for discussion. 
+
+## Model-Based EDA
+
+Model-Based EDA is another way to glean information about relationships in the dataset. Naive models are used for this purpose, since the goal at this stage is not to build a highly accurate predictive model, but to uncover additional information. 
+
+Results are included here, as this expands on the work previously done in the `Assignment 01` report. This section contains three parts:
+
+1. Naive Decision Tree Models
+2. Naive PCA Models
+3. Naive LDA Models
+
+Each naive model is fit under response-vs-all. The first model uses the `wine` dataset with original class frequencies, whereas the second model uses the `wine` dataset with down sampled class frequencies.
+
+Both the `PCA` and `LDA` models can be used as a means of dimension reduction. Of particular interest is whether or not qualitative plots of the naive models show clear class separation. Though not guaranteed, clear class separation bodes well for constructing a model with high predictive accuracy. 
+
+### Naive Decision Tree Models
+
+A naive decision tree model was fit to the `wine` and `wine.ds` datasets. Both models were constructed using all variables in the dataset. Interesting information can be revealed from a naive decision tree model. In the tree plots below, the color of each square corresponds to a level in the response variable. Within the square:
+
+* The first line refers to the class;
+* The second line is the percentage of rows by class (from left to right) within the node; and
+* The third line is the percentage of rows at the node, from the total rows in the data set.
+
+In __Figure 1__ below, the first node is colored blue, because 40% of the rows in the `wine` dataset correspond to `class_2` (line 2). Looking at the second node, the tree splits on the `proline` variable. Values greater than or equal to `755` branch to the left, and values less than `755` branch to the right. On the left, `class_1` is the most prevalent, representing 85% of the population at this criterion (lines 1 and 2). In total, 38% of the `wine` dataset has a `proline` value greater than or equal to `755` (line 3).
+
+__Figure 1__ shows the root node branch splitting on the `proline` variable, followed by `flavanoids` and `OD280_OD315`, and finally `hue`.
+
+\begin{center}
+Figure 1: Tree plot of Wine Dataset - Original
+\end{center}
+
+```{r EDA1}
+#--------------------------------------
+# Decision tree
+#--------------------------------------
+# Model 1 - Original
+fancyRpartPlot(rpart(class ~ ., data = wine), sub = "")
+```
+
+The same interpretation process may be used in __Figure 2__ below. __Figure 2__ uses the `wine.ds` dataset, and tells a slightly different story from __Figure 1__. Here, the root node branch splits on the `flavanoids` variable, followed by `proline` and `color_intensity_`. 
+
+\pagebreak
+
+\begin{center}
+Figure 2: Tree plot of Wine Dataset - Down Sampled
+\end{center}
+
+```{r EDA2}
+#--------------------------------------
+# Decision tree
+#--------------------------------------
+# Model 2 - Down Sampled
+fancyRpartPlot(rpart(class ~ ., data = wine.ds), sub = "")
+```
+
+A naive tree model can be used as proxy for variable importance. With the `wine` and `wine.ds` datasets, each naive tree model tells a slightly different story of variable importance.
+
+### Naive PCA Models
+
+A naive `PCA` model was fit to the `wine` and `wine.ds` datasets. Both models were constructed using all variables in the dataset. The models were fit using scaled variables. 
+
+The resulting biplot of the `PCA` model for the `wine` dataset is shown in __Figure 3__ below, which plots the first two principal components. Though the `biplot()` function in `{stats}` results in a rather cluttered plot, class separation can still be seen. 
+
+One benefit of a biplot is being able to see influence of variable loadings on each of the first two principal components. For instance, in __Figure 3__ below, both `alcohol` and `color_intensity` are located away from other observations, but seem to have a large effect on the second principal component.
+
+\pagebreak
+
+\begin{center}
+Figure 3: Biplot for Naive PCA Model - Original
+\end{center}
+
+```{r EDA3}
+#--------------------------------------
+# Principal Components Analysis
+#--------------------------------------
+# Model 1 - Original
+wine$class = as.numeric(wine$class)
+wine.pcr.m1 = prcomp(wine, scale = T)
+biplot(wine.pcr.m1, xlabs = wine[, "class"])
+wine$class = as.factor(wine$class)
+levels(wine$class) = c("class_1", "class_2", "class_3")
+```
+
+The resulting biplot of the `PCA` model for the `wine.ds` dataset is shown in __Figure 4__ below, which plots the first two principal components. Though the `biplot()` function in `{stats}` results in a rather cluttered plot, class separation can still be seen.
+
+One benefit of a biplot is being able to see influence of variable loadings on each of the first two principal components. For instance, in __Figure 4__ below, both `alcohol` and `color_intensity` are located away from other observations, but seem to have a large effect on the second principal component.
+
+\pagebreak
+
+\begin{center}
+Figure 4: Biplot for Naive PCA Model - Down Sampled
+\end{center}
+
+```{r EDA4}
+#--------------------------------------
+# Principal Components Analysis
+#--------------------------------------
+# Model 2 - Down Sampled
+wine.ds$class = as.numeric(wine.ds$class)
+wine.pcr.m2 = prcomp(wine.ds, scale = T)
+biplot(wine.pcr.m2, xlabs = wine.ds[, "class"])
+wine.ds$class = as.factor(wine.ds$class)
+levels(wine.ds$class) = c("class_1", "class_2", "class_3")
+```
+
+Interestingly, __Figure 4__ appears to be close to a mirror-image of __Figure 3__. Despite the cluttered appearance of the biplots, both `PCA` models show class separation.
+
+### Naive LDA Models
+
+A naive `LDA` model was fit to the `wine` and `wine.ds` datasets. Both models were constructed using all variables in the dataset. The resulting graphics are shown in __Figure 5__ and __Figure 6__ below, which plots the two linear discriminants and illustrates class separation in both datasets. 
+
+\pagebreak
+
+\begin{center}
+Figure 5: Plot of Linear Discriminants for Naive LDA Model - Original
+\end{center}
+
+```{r EDA5}
+#--------------------------------------
+# Linear Discriminant Analysis
+#--------------------------------------
+# Model 1 - Original
+wine.lda.m1 = lda(class ~ ., data = wine)
+levels(wine$class) = c("1", "2", "3")
+plot(wine.lda.m1)
+levels(wine$class) = c("class_1", "class_2", "class_3")
+```
+
+\begin{center}
+Figure 6: Plot of Linear Discriminants for Naive LDA Model - Down Sampled
+\end{center}
+
+```{r EDA6}
+#--------------------------------------
+# Linear Discriminant Analysis
+#--------------------------------------
+# Model 2 - Down Sampled
+wine.lda.m2 = lda(class ~ ., data = wine.ds)
+levels(wine.ds$class) = c("1", "2", "3")
+plot(wine.lda.m2)
+levels(wine.ds$class) = c("class_1", "class_2", "class_3")
+```
+
+Between the `LDA` and `PCA` models, the `LDA` model shows cleaner class separation. This is not surprising since `LDA` takes class information into account. 
+
+# Model Build
+
+The class separation seen in the naive models from the _Model-Based EDA_ section suggest predictive accuracy can be attained in both the `wine` and `wine.ds` datasets. Whether one dataset will lead to an edge in predictive accuracy remains to be seen.
+
+This section contains three parts:
+
+1. Random Forest Models
+2. Support Vector Machine Models
+3. Neural Net Models
+
+Each model was fit using 10-fold cross-validation repeated 10 times (`RCV`). The `RF` models were also fit using out-of-bag (`OOB`) error and the `tuneRF()` function in `{randomForest}` to select a value of `mtry`. 
+
+Model fit was assessed on in-sample performance. Both `accuracy` and `Kappa` are computed. For `classification` problems with unbalanced classes (such as in the `wine` dataset), it is important to assess both `accuracy` _and_ the `Kappa` statistic. From _Applied Predictive Modeling_ (Johnson & Kuhn, 2016 5th printing), "Kappa takes into account the accuracy that would be generated simply by chance... When the class distributions are equivalent, overall accuracy and Kappa are proportional." 
+
+Lastly, models were fit first using the `wine` dataset with unbalanced classes. If 100% `accuracy` and `Kappa` was not achieved in-sample, then models were also fit to the `wine.ds` dataset with balanced classes. This was done with the notion that the more parsimonious model is preferred; with parsimony referring to terms in the model as well as any other adjustments to the dataset from the original or raw form. Practically, this meant none of the `RF` models were fit to the `wine.ds` dataset. 
+
+## Random Forest Models
+
+A total of six `RF` models were fit. Each model is first grouped by method of fit: either `RCV` (10-fold cross-validation repeated ten times), `OOB` (out-of-bag error), or `tuneRF` (using the `tuneRF()` function in `{randomForest}`) were used to determine the value of `mtry`. Next, each model either did or did not use pre-processing. Here, pre-processing consisted of centering and scaling numeric variables to a mean of zero and standard deviation of one.
+
+### RF: Model 1
+
+```{r MB_RF_M1_1, include = F}
+#------------------------------------------------------------------------------
+# Random Forest
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 1 | preProcess = F | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.rf.m1.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m1 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   trControl = wine.rf.m1.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m1$finalModel
+
+# In-sample fit
+wine.rf.m1.trn.pred = predict(wine.rf.m1, newdata = wine[, -1])
+wine.rf.m1.trn.cm = confusionMatrix(wine.rf.m1.trn.pred, wine$class)
+wine.rf.m1.trn.cm$table
+wine.rf.m1.trn.cm$overall[1:2]
+```
+
+The first `RF` model (`M1`) used `RCV` and no pre-processing of the `wine` dataset. Two figures are included below. __Figure 7__ shows `accuracy` by three different values of `mtry`, while __Figure 8__ shows `variable importance`. The model used 500 trees and chose a `mtry` value of `2`. 
+
+\pagebreak
+
+\begin{center}
+Figure 7: Accuracy: wine.rf.m1
+\end{center}
+
+```{r MB_RF_M1_2}
+plot(wine.rf.m1)
+```
+
+\begin{center}
+Figure 8: Var Imp: wine.rf.m1
+\end{center}
+
+```{r MB_RF_M1_3}
+plot(varImp(wine.rf.m1))
+```
+
+__Table 3__ below shows the confusion matrix for `RF M1`. Both `accuracy` and `Kappa` were 1.0. 
+
+\begin{center}
+Table 3: Confusion Matrix: wine.rf.m1
+\end{center}
+
+```{r MB_RF_M1_4}
+pander(wine.rf.m1.trn.cm$table, caption = "", justify = "left")
+```
+
+### RF: Model 2
+
+```{r MB_RF_M2_1, include = F}
+#------------------------------------------------------------------------------
+# Random Forest
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 2 | preProcess = T | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.rf.m2.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m2 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   preProcess = c("center", "scale"),
+                   trControl = wine.rf.m2.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m2$finalModel
+
+# In-sample fit
+wine.rf.m2.trn.pred = predict(wine.rf.m2, newdata = wine[, -1])
+wine.rf.m2.trn.cm = confusionMatrix(wine.rf.m2.trn.pred, wine$class)
+wine.rf.m2.trn.cm$table
+wine.rf.m2.trn.cm$overall[1:2]
+```
+
+The second `RF` model (`M2`) used `RCV` and pre-processing of the `wine` dataset. Two figures are included below. __Figure 9__ shows `accuracy` by three different values of `mtry`, while __Figure 10__ shows `variable importance`. The model used 500 trees and chose a `mtry` value of `2`. 
+
+\begin{center}
+Figure 9: Accuracy: wine.rf.m2
+\end{center}
+
+```{r MB_RF_M2_2}
+plot(wine.rf.m2)
+```
+
+\pagebreak
+
+\begin{center}
+Figure 10: Var Imp: wine.rf.m2
+\end{center}
+
+```{r MB_RF_M2_3}
+plot(varImp(wine.rf.m2))
+```
+
+__Table 4__ below shows the confusion matrix for `RF M2`. Both `accuracy` and `Kappa` were 1.0. 
+
+\begin{center}
+Table 4: Confusion Matrix: wine.rf.m2
+\end{center}
+
+```{r MB_RF_M2_4}
+pander(wine.rf.m2.trn.cm$table, caption = "", justify = "left")
+```
+
+### RF: Model 3
+
+```{r MB_RF_M3_1, include = F}
+#------------------------------------------------------------------------------
+# Random Forest
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 3 | preProcess = F | balanced = F | method = oob
+#--------------------------------------
+# Specify fit parameters
+wine.rf.m3.fc= trainControl(method = "oob",
+                            classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m3 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   trControl = wine.rf.m3.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m3$finalModel
+
+# In-sample fit
+wine.rf.m3.trn.pred = predict(wine.rf.m3, newdata = wine[, -1])
+wine.rf.m3.trn.cm = confusionMatrix(wine.rf.m3.trn.pred, wine$class)
+wine.rf.m3.trn.cm$table
+wine.rf.m3.trn.cm$overall[1:2]
+```
+
+The third `RF` model (`M3`) used `OOB` and no pre-processing of the `wine` dataset. Two figures are included below. __Figure 11__ shows `accuracy` by three different values of `mtry`, while __Figure 12__ shows `variable importance`. The model used 500 trees and chose a `mtry` value of `2`. The `OOB` error rate during model fit was estimated at 1.69%.
+
+\pagebreak
+
+\begin{center}
+Figure 11: Accuracy: wine.rf.m3
+\end{center}
+
+```{r MB_RF_M3_2}
+plot(wine.rf.m3)
+```
+
+\begin{center}
+Figure 12: Var Imp: wine.rf.m3
+\end{center}
+
+```{r MB_RF_M3_3}
+plot(varImp(wine.rf.m3))
+```
+
+__Table 5__ below shows the confusion matrix for `RF M3`. Both `accuracy` and `Kappa` were 1.0. 
+
+\begin{center}
+Table 5: Confusion Matrix: wine.rf.m3
+\end{center}
+
+```{r MB_RF_M3_4}
+pander(wine.rf.m3.trn.cm$table, caption = "", justify = "left")
+```
+
+### RF: Model 4
+
+```{r MB_RF_M4_1, include = F}
+#------------------------------------------------------------------------------
+# Random Forest
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 4 | preProcess = T | balanced = F | method = oob
+#--------------------------------------
+# Specify fit parameters
+wine.rf.m4.fc = trainControl(method = "oob",
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m4 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   preProcess = c("center", "scale"),
+                   trControl = wine.rf.m4.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m4$finalModel
+
+# In-sample fit
+wine.rf.m4.trn.pred = predict(wine.rf.m4, newdata = wine[, -1])
+wine.rf.m4.trn.cm = confusionMatrix(wine.rf.m4.trn.pred, wine$class)
+wine.rf.m4.trn.cm$table
+wine.rf.m4.trn.cm$overall[1:2]
+```
+
+The fourth `RF` model (`M4`) used `OOB` and pre-processing of the `wine` dataset. Two figures are included below. __Figure 13__ shows `accuracy` by three different values of `mtry`, while __Figure 14__ shows `variable importance`. The model used 500 trees and chose a `mtry` value of `2`. The `OOB` error rate during model fit was estimated at 1.69%.
+
+\begin{center}
+Figure 13: Accuracy: wine.rf.m4
+\end{center}
+
+```{r MB_RF_M4_2}
+plot(wine.rf.m4)
+```
+
+\pagebreak
+
+\begin{center}
+Figure 14: Var Imp: wine.rf.m4
+\end{center}
+
+```{r MB_RF_M4_3}
+plot(varImp(wine.rf.m4))
+```
+
+__Table 6__ below shows the confusion matrix for `RF M4`. Both `accuracy` and `Kappa` were 1.0. 
+
+\begin{center}
+Table 6: Confusion Matrix: wine.rf.m4
+\end{center}
+
+```{r MB_RF_M4_4}
+pander(wine.rf.m4.trn.cm$table, caption = "", justify = "left")
+```
+
+### RF: Model 5
+
+```{r MB_RF_M5_1, include = F}
+#------------------------------------------------------------------------------
+# Random Forest
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 5 | preProcess = F | balanced = F | method = tuneRF
+#--------------------------------------
+# Tune value of mtry
+set.seed(123)
+wine.rf.m5.tune = tuneRF(x = wine[, -1],
+                         y = wine[, 1],
+                         ntreeTry = 500,
+                         stepFactor = 1.5,
+                         improve = 0.01,
+                         trace = T,
+                         plot = T)
+
+wine.rf.m5.fc = trainControl(method = "none")
+wine.rf.m5.grid = data.frame(mtry = 3)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m5 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   tuneGrid = wine.rf.m5.grid,
+                   trControl = wine.rf.m5.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m5$finalModel
+
+# In-sample fit
+wine.rf.m5.trn.pred = predict(wine.rf.m5, newdata = wine[, -1])
+wine.rf.m5.trn.cm = confusionMatrix(wine.rf.m5.trn.pred, wine$class)
+wine.rf.m5.trn.cm$table
+wine.rf.m5.trn.cm$overall[1:2]
+```
+
+The fifth `RF` model (`M5`) used `tuneRF` to determine the value of `mtry` and no pre-processing of the `wine` dataset. The `tuneRF` parameters were set to try 500 trees, under a step factor of 1.5 (the factor with which to increase `mtry` at each step), and a minimum improvement of 0.01 (the improvement with the next value of `mtry` must be at least much for the search to continue). __Figure 15__ shows `variable importance` using a `mtry` value of `3`. 
+
+\pagebreak
+
+\begin{center}
+Figure 15: Var Imp: wine.rf.m5
+\end{center}
+
+```{r MB_RF_M5_2}
+plot(varImp(wine.rf.m5))
+```
+
+__Table 7__ below shows the confusion matrix for `RF M5`. Both `accuracy` and `Kappa` were 1.0. 
+
+\begin{center}
+Table 7: Confusion Matrix: wine.rf.m5
+\end{center}
+
+```{r MB_RF_M5_3}
+pander(wine.rf.m5.trn.cm$table, caption = "", justify = "left")
+```
+
+### RF: Model 6
+
+```{r MB_RF_M6_1, include = F}
+#------------------------------------------------------------------------------
+# Random Forest
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 6 | preProcess = T | balanced = F | method = tuneRF
+#--------------------------------------
+# Tune value of mtry
+set.seed(123)
+wine.rf.m6.tune = tuneRF(x = wine[, -1],
+                         y = wine[, 1],
+                         ntreeTry = 500,
+                         stepFactor = 1.5,
+                         improve = 0.01,
+                         trace = T,
+                         plot = T)
+
+wine.rf.m6.fc = trainControl(method = "none")
+wine.rf.m6.grid = data.frame(mtry = 3)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m6 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   preProcess = c("center", "scale"),
+                   tuneGrid = wine.rf.m6.grid,
+                   trControl = wine.rf.m6.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m6$finalModel
+
+# In-sample fit
+wine.rf.m6.trn.pred = predict(wine.rf.m6, newdata = wine[, -1])
+wine.rf.m6.trn.cm = confusionMatrix(wine.rf.m6.trn.pred, wine$class)
+wine.rf.m6.trn.cm$table
+wine.rf.m6.trn.cm$overall[1:2]
+```
+
+The sixth `RF` model (`M6`) used `tuneRF` to determine the value of `mtry` and pre-processing of the `wine` dataset. The `tuneRF` parameters were set to try 500 trees, under a step factor of 1.5 (the factor with which to increase `mtry` at each step), and a minimum improvement of 0.01 (the improvement with the next value of `mtry` must be at least much for the search to continue). __Figure 16__ shows `variable importance` using a `mtry` value of `3`. 
+
+\pagebreak
+
+\begin{center}
+Figure 16: Var Imp: wine.rf.m6
+\end{center}
+
+```{r MB_RF_M6_2}
+plot(varImp(wine.rf.m6))
+```
+
+__Table 8__ below shows the confusion matrix for `RF M6`. Both `accuracy` and `Kappa` were 1.0. 
+
+\begin{center}
+Table 8: Confusion Matrix: wine.rf.m6
+\end{center}
+
+```{r MB_RF_M6_3}
+pander(wine.rf.m6.trn.cm$table, caption = "", justify = "left")
+```
+
+## Support Vector Machine Models
+
+A total of four `SVM` models were fit. All four models used `RCV` (10-fold cross-validation repeated ten times). Each model is first grouped by whether or not the `wine` (original) or `wine.ds` (down sampled) dataset was used, then by whether or not pre-processing was used. Here, pre-processing consisted of centering and scaling numeric variables to a mean of zero and standard deviation of one.
+
+### SVM: Model 1
+
+```{r MB_SVM_M1_1, include = F}
+#------------------------------------------------------------------------------
+# Support Vector Machine
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 1 | preProcess = F | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.svm.m1.fc = trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10,
+                              classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.svm.m1 = train(x = wine[, -1],
+                    y = wine[, 1],
+                    method = "svmRadialWeights",
+                    trControl = wine.svm.m1.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.svm.m1$finalModel
+
+# In-sample fit
+wine.svm.m1.trn.pred = predict(wine.svm.m1, newdata = wine[, -1])
+wine.svm.m1.trn.cm = confusionMatrix(wine.svm.m1.trn.pred, wine$class)
+wine.svm.m1.trn.cm$table
+wine.svm.m1.trn.cm$overall[1:2]
+```
+
+The first `SVM` model (`M1`) used `RCV` and no pre-processing of the `wine` dataset. Two figures are included below. __Figure 17__ shows `accuracy` by three different values of `C` (cost parameter), while __Figure 18__ shows `variable importance` by class. The model used `C` of 0.5 and 82 support vectors, yielding a training error of 0.0056.
+
+\pagebreak
+
+\begin{center}
+Figure 17: Accuracy: wine.svm.m1
+\end{center}
+
+```{r MB_SVM_M1_2}
+plot(wine.svm.m1)
+```
+
+\begin{center}
+Figure 18: Var Imp by Class: wine.svm.m1
+\end{center}
+
+```{r MB_SVM_M1_3}
+plot(varImp(wine.svm.m1))
+```
+
+__Table 9__ below shows the confusion matrix for `SVM M1`. The model yielded `accuracy` of 0.9944 and `Kappa` of 0.9915. 
+
+\begin{center}
+Table 9: Confusion Matrix: wine.svm.m1
+\end{center}
+
+```{r MB_SVM_M1_4}
+pander(wine.svm.m1.trn.cm$table, caption = "", justify = "left")
+```
+
+### SVM: Model 2
+
+```{r MB_SVM_M2_1, include = F}
+#------------------------------------------------------------------------------
+# Support Vector Machine
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 2 | preProcess = T | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.svm.m2.fc = trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10,
+                              classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.svm.m2 = train(x = wine[, -1],
+                    y = wine[, 1],
+                    method = "svmRadialWeights",
+                    preProcess = c("center", "scale"),
+                    trControl = wine.svm.m2.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.svm.m2$finalModel
+
+# In-sample fit
+wine.svm.m2.trn.pred = predict(wine.svm.m2, newdata = wine[, -1])
+wine.svm.m2.trn.cm = confusionMatrix(wine.svm.m2.trn.pred, wine$class)
+wine.svm.m2.trn.cm$table
+wine.svm.m2.trn.cm$overall[1:2]
+```
+
+The second `SVM` model (`M2`) used `RCV` and pre-processing of the `wine` dataset. Two figures are included below. __Figure 19__ shows `accuracy` by three different values of `C` (cost parameter), while __Figure 20__ shows `variable importance` by class. The model used `C` of 0.5 and 82 support vectors, yielding a training error of 0.0056.
+
+\begin{center}
+Figure 19: Accuracy: wine.svm.m2
+\end{center}
+
+```{r MB_SVM_M2_2}
+plot(wine.svm.m2)
+```
+
+\pagebreak
+
+\begin{center}
+Figure 20: Var Imp by Class: wine.svm.m2
+\end{center}
+
+```{r MB_SVM_M2_3}
+plot(varImp(wine.svm.m2))
+```
+
+__Table 10__ below shows the confusion matrix for `SVM M2`. The model yielded `accuracy` of 0.9944 and `Kappa` of 0.9915. 
+
+\begin{center}
+Table 10: Confusion Matrix: wine.svm.m2
+\end{center}
+
+```{r MB_SVM_M2_4}
+pander(wine.svm.m2.trn.cm$table, caption = "", justify = "left")
+```
+
+### SVM: Model 3
+
+```{r MB_SVM_M3_1, include = F}
+#------------------------------------------------------------------------------
+# Support Vector Machine
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 3 | preProcess = F | balanced = T | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.svm.m3.fc = trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10,
+                              classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.svm.m3 = train(x = wine.ds[, -14],
+                    y = wine.ds[, 14],
+                    method = "svmRadialWeights",
+                    trControl = wine.svm.m3.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.svm.m3$finalModel
+
+# In-sample fit
+wine.svm.m3.trn.pred = predict(wine.svm.m3, newdata = wine[, -1])
+wine.svm.m3.trn.cm = confusionMatrix(wine.svm.m3.trn.pred, wine$class)
+wine.svm.m3.trn.cm$table
+wine.svm.m3.trn.cm$overall[1:2]
+```
+
+The third `SVM` model (`M3`) used `RCV` and no pre-processing of the `wine.ds` dataset. Two figures are included below. __Figure 21__ shows `accuracy` by three different values of `C` (cost parameter), while __Figure 22__ shows `variable importance` by class. The model used `C` of 0.25 and 87 support vectors, yielding a training error of 0.0139.
+
+\pagebreak
+
+\begin{center}
+Figure 21: Accuracy: wine.svm.m3
+\end{center}
+
+```{r MB_SVM_M3_2}
+plot(wine.svm.m3)
+```
+
+\begin{center}
+Figure 22: Var Imp by Class: wine.svm.m3
+\end{center}
+
+```{r MB_SVM_M3_3}
+plot(varImp(wine.svm.m3))
+```
+
+__Table 11__ below shows the confusion matrix for `SVM M3`. The model yielded `accuracy` of 0.9888 and `Kappa` of 0.9829. 
+
+\begin{center}
+Table 11: Confusion Matrix: wine.svm.m3
+\end{center}
+
+```{r MB_SVM_M3_4}
+pander(wine.svm.m3.trn.cm$table, caption = "", justify = "left")
+```
+
+### SVM: Model 4
+
+```{r MB_SVM_M4_1, include = F}
+#------------------------------------------------------------------------------
+# Support Vector Machine
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 4 | preProcess = T | balanced = T | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.svm.m4.fc = trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10,
+                              classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.svm.m4 = train(x = wine.ds[, -14],
+                    y = wine.ds[, 14],
+                    method = "svmRadialWeights",
+                    preProcess = c("center", "scale"),
+                    trControl = wine.svm.m4.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.svm.m4$finalModel
+
+# In-sample fit
+wine.svm.m4.trn.pred = predict(wine.svm.m4, newdata = wine[, -1])
+wine.svm.m4.trn.cm = confusionMatrix(wine.svm.m4.trn.pred, wine$class)
+wine.svm.m4.trn.cm$table
+wine.svm.m4.trn.cm$overall[1:2]
+```
+
+The fourth `SVM` model (`M4`) used `RCV` and pre-processing of the `wine.ds` dataset. Two figures are included below. __Figure 23__ shows `accuracy` by three different values of `C` (cost parameter), while __Figure 24__ shows `variable importance` by class. The model used `C` of 0.25 and 87 support vectors, yielding a training error of 0.0139.
+
+\begin{center}
+Figure 23: Accuracy: wine.svm.m4
+\end{center}
+
+```{r MB_SVM_M4_2}
+plot(wine.svm.m4)
+```
+
+\pagebreak
+
+\begin{center}
+Figure 24: Var Imp by Class: wine.svm.m4
+\end{center}
+
+```{r MB_SVM_M4_3}
+plot(varImp(wine.svm.m4))
+```
+
+__Table 12__ below shows the confusion matrix for `SVM M4`. The model yielded `accuracy` of 0.9888 and `Kappa` of 0.9829. 
+
+\begin{center}
+Table 12: Confusion Matrix: wine.svm.m4
+\end{center}
+
+```{r MB_SVM_M4_4}
+pander(wine.svm.m4.trn.cm$table, caption = "", justify = "left")
+```
+
+## Neural Net Models
+
+A total of four `NN` models were fit. All four models used `RCV` (10-fold cross-validation repeated ten times). Each model is first grouped by whether or not the `wine` (original) or `wine.ds` (down sampled) dataset was used, then by whether or not pre-processing was used. Here, pre-processing consisted of centering and scaling numeric variables to a mean of zero and standard deviation of one.
+
+### NN: Model 1
+
+```{r MB_NN_M1_1, include = F}
+#------------------------------------------------------------------------------
+# Neural Net
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 1 | preProcess = F | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.nn.m1.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.nn.m1 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "nnet",
+                   trace = F,
+                   trControl = wine.nn.m1.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.nn.m1$finalModel
+
+# In-sample fit
+wine.nn.m1.trn.pred = predict(wine.nn.m1, newdata = wine[, -1])
+wine.nn.m1.trn.cm = confusionMatrix(wine.nn.m1.trn.pred, wine$class)
+wine.nn.m1.trn.cm$table
+wine.nn.m1.trn.cm$overall[1:2]
+```
+
+The first `NN` model (`M1`) used `RCV` and no pre-processing of the `wine` dataset. Two figures are included below. __Figure 25__ shows `accuracy` by three different values of hidden units (1, 3, and 5) and two different values of weight decay (0.0 and 0.1); while __Figure 26__ shows `variable importance` by class. The model created a 13-5-3 network, where 13 is the number of input variables, 5 is the number of hidden units, and 3 is the number of output layers (classes). The model used 88 weights and a decay value of 0.1.
+
+\pagebreak
+
+\begin{center}
+Figure 25: Accuracy: wine.nn.m1
+\end{center}
+
+```{r MB_NN_M1_2}
+plot(wine.nn.m1)
+```
+
+\begin{center}
+Figure 26: Var Imp by Class: wine.nn.m1
+\end{center}
+
+```{r MB_NN_M1_3}
+wine.nn.m1.vi = varImp(wine.nn.m1)
+wine.nn.m1.vi$importance = as.data.frame(wine.nn.m1.vi$importance)[, -1]
+plot(wine.nn.m1.vi)
+```
+
+__Table 13__ below shows the confusion matrix for `NN M1`. The model yielded `accuracy` of 0.9944 and `Kappa` of 0.9915. 
+
+\begin{center}
+Table 13: Confusion Matrix: wine.nn.m1
+\end{center}
+
+```{r MB_NN_M1_4}
+pander(wine.nn.m1.trn.cm$table, caption = "", justify = "left")
+```
+
+### NN: Model 2
+
+```{r MB_NN_M2_1, include = F}
+#------------------------------------------------------------------------------
+# Neural Net
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 2 | preProcess = T | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.nn.m2.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.nn.m2 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "nnet",
+                   trace = F,
+                   preProcess = c("center", "scale"),
+                   trControl = wine.nn.m2.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.nn.m2$finalModel
+
+# In-sample fit
+wine.nn.m2.trn.pred = predict(wine.nn.m2, newdata = wine[, -1])
+wine.nn.m2.trn.cm = confusionMatrix(wine.nn.m2.trn.pred, wine$class)
+wine.nn.m2.trn.cm$table
+wine.nn.m2.trn.cm$overall[1:2]
+```
+
+The second `NN` model (`M2`) used `RCV` and pre-processing of the `wine` dataset. Two figures are included below. __Figure 27__ shows `accuracy` by three different values of hidden units (1, 3, and 5) and two different values of weight decay (0.0 and 0.1); while __Figure 28__ shows `variable importance` by class. The model created a 13-3-3 network, where 13 is the number of input variables, 3 is the number of hidden units, and 3 is the number of output layers (classes). The model used 54 weights and a decay value of 0.1.
+
+\begin{center}
+Figure 27: Accuracy: wine.nn.m2
+\end{center}
+
+```{r MB_NN_M2_2}
+plot(wine.nn.m2)
+```
+
+\pagebreak
+
+\begin{center}
+Figure 28: Var Imp by Class: wine.nn.m2
+\end{center}
+
+```{r MB_NN_M2_3}
+wine.nn.m2.vi = varImp(wine.nn.m2)
+wine.nn.m2.vi$importance = as.data.frame(wine.nn.m2.vi$importance)[, -1]
+plot(wine.nn.m2.vi)
+```
+
+__Table 14__ below shows the confusion matrix for `NN M2`. The model yielded `accuracy` of 1.0 and `Kappa` of 1.0. 
+
+\begin{center}
+Table 14: Confusion Matrix: wine.nn.m2
+\end{center}
+
+```{r MB_NN_M2_4}
+pander(wine.nn.m2.trn.cm$table, caption = "", justify = "left")
+```
+
+### NN: Model 3
+
+```{r MB_NN_M3_1, include = F}
+#------------------------------------------------------------------------------
+# Neural Net
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 3 | preProcess = F | balanced = T | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.nn.m3.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.nn.m3 = train(x = wine.ds[, -14],
+                   y = wine.ds[, 14],
+                   method = "nnet",
+                   trace = F,
+                   trControl = wine.nn.m3.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.nn.m3$finalModel
+
+# In-sample fit
+wine.nn.m3.trn.pred = predict(wine.nn.m3, newdata = wine[, -1])
+wine.nn.m3.trn.cm = confusionMatrix(wine.nn.m3.trn.pred, wine$class)
+wine.nn.m3.trn.cm$table
+wine.nn.m3.trn.cm$overall[1:2]
+```
+
+The third `NN` model (`M3`) used `RCV` and no pre-processing of the `wine.ds` dataset. Two figures are included below. __Figure 29__ shows `accuracy` by three different values of hidden units (1, 3, and 5) and two different values of weight decay (0.0 and 0.1); while __Figure 30__ shows `variable importance` by class. The model created a 13-3-3 network, where 13 is the number of input variables, 3 is the number of hidden units, and 3 is the number of output layers (classes). The model used 54 weights and a decay value of 0.1.
+
+\pagebreak
+
+\begin{center}
+Figure 29: Accuracy: wine.nn.m3
+\end{center}
+
+```{r MB_NN_M3_2}
+plot(wine.nn.m3)
+```
+
+\begin{center}
+Figure 30: Var Imp by Class: wine.nn.m3
+\end{center}
+
+```{r MB_NN_M3_3}
+wine.nn.m3.vi = varImp(wine.nn.m3)
+wine.nn.m3.vi$importance = as.data.frame(wine.nn.m3.vi$importance)[, -1]
+plot(wine.nn.m3.vi)
+```
+
+__Table 15__ below shows the confusion matrix for `NN M3`. The model yielded `accuracy` of 0.9831 and `Kappa` of 0.9745. 
+
+\begin{center}
+Table 15: Confusion Matrix: wine.nn.m3
+\end{center}
+
+```{r MB_NN_M3_4}
+pander(wine.nn.m3.trn.cm$table, caption = "", justify = "left")
+```
+
+### NN: Model 4
+
+```{r MB_NN_M4_1, include = F}
+#------------------------------------------------------------------------------
+# Neural Net
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 4 | preProcess = T | balanced = T | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.nn.m4.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.nn.m4 = train(x = wine.ds[, -14],
+                   y = wine.ds[, 14],
+                   method = "nnet",
+                   trace = F,
+                   preProcess = c("center", "scale"),
+                   trControl = wine.nn.m4.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.nn.m4$finalModel
+
+# In-sample fit
+wine.nn.m4.trn.pred = predict(wine.nn.m4, newdata = wine[, -1])
+wine.nn.m4.trn.cm = confusionMatrix(wine.nn.m4.trn.pred, wine$class)
+wine.nn.m4.trn.cm$table
+wine.nn.m4.trn.cm$overall[1:2]
+```
+
+The fourth `NN` model (`M4`) used `RCV` and pre-processing of the `wine.ds` dataset. Two figures are included below. __Figure 31__ shows `accuracy` by three different values of hidden units (1, 3, and 5) and two different values of weight decay (0.0 and 0.1); while __Figure 32__ shows `variable importance` by class. The model created a 13-3-3 network, where 13 is the number of input variables, 3 is the number of hidden units, and 3 is the number of output layers (classes). The model used 54 weights and a decay value of 0.1.
+
+\begin{center}
+Figure 31: Accuracy: wine.nn.m4
+\end{center}
+
+```{r MB_NN_M4_2}
+plot(wine.nn.m4)
+```
+
+\pagebreak
+
+\begin{center}
+Figure 32: Var Imp by Class: wine.nn.m4
+\end{center}
+
+```{r MB_NN_M4_3}
+wine.nn.m4.vi = varImp(wine.nn.m4)
+wine.nn.m4.vi$importance = as.data.frame(wine.nn.m4.vi$importance)[, -1]
+plot(wine.nn.m4.vi)
+```
+
+__Table 16__ below shows the confusion matrix for `NN M4`. The model yielded `accuracy` of 0.9944 and `Kappa` of 0.9915. 
+
+\begin{center}
+Table 16: Confusion Matrix: wine.nn.m4
+\end{center}
+
+```{r MB_NN_M4_4}
+pander(wine.nn.m4.trn.cm$table, caption = "", justify = "left")
+```
+
+# Model Comparison
+
+```{r MC1, include = F}
+#==============================================================================
+# Model Comparison
+#==============================================================================
+
+#--------------------------------------
+# Table Results
+#--------------------------------------
+# Model Types
+model.types = cbind(c(rep("Random Forest", each = 6),
+                      rep(c("SVM", "Neural Net"), each = 4)))
+
+# Model Names
+model.reps = c("M1", "M2", "M3", "M4")
+model.names = cbind(c(model.reps,
+                      "M5",
+                      "M6",
+                      rep(model.reps, times = 2)))
+
+# Pre-process
+model.pp = cbind(rep(c("0", "1"), times = 7))
+
+# Down Sample
+model.ds = cbind(c(rep("0", each = 6),
+                   rep(c("0", "1"), each = 2, times = 2)))
+
+# Method
+model.meth = cbind(c(rep("RCV", each = 2),
+                     rep("OOB", each = 2),
+                     rep("tuneRF", each = 2),
+                     rep("RCV", each = 8)))
+
+# Accuracy, Train
+model.trn.acc = rbind(wine.rf.m1.trn.cm$overall[1],
+                      wine.rf.m2.trn.cm$overall[1],
+                      wine.rf.m3.trn.cm$overall[1],
+                      wine.rf.m4.trn.cm$overall[1],
+                      wine.rf.m5.trn.cm$overall[1],
+                      wine.rf.m6.trn.cm$overall[1],
+                      wine.svm.m1.trn.cm$overall[1],
+                      wine.svm.m2.trn.cm$overall[1],
+                      wine.svm.m3.trn.cm$overall[1],
+                      wine.svm.m4.trn.cm$overall[1],
+                      wine.nn.m1.trn.cm$overall[1],
+                      wine.nn.m2.trn.cm$overall[1],
+                      wine.nn.m3.trn.cm$overall[1],
+                      wine.nn.m4.trn.cm$overall[1])
+
+# Kappa, Train
+model.trn.kpp = rbind(wine.rf.m1.trn.cm$overall[2],
+                      wine.rf.m2.trn.cm$overall[2],
+                      wine.rf.m3.trn.cm$overall[2],
+                      wine.rf.m4.trn.cm$overall[2],
+                      wine.rf.m5.trn.cm$overall[2],
+                      wine.rf.m6.trn.cm$overall[2],
+                      wine.svm.m1.trn.cm$overall[2],
+                      wine.svm.m2.trn.cm$overall[2],
+                      wine.svm.m3.trn.cm$overall[2],
+                      wine.svm.m4.trn.cm$overall[2],
+                      wine.nn.m1.trn.cm$overall[2],
+                      wine.nn.m2.trn.cm$overall[2],
+                      wine.nn.m3.trn.cm$overall[2],
+                      wine.nn.m4.trn.cm$overall[2])
+
+# Data Frame
+model.comp = data.frame(model.types,
+                        model.names,
+                        model.pp,
+                        model.ds,
+                        model.meth,
+                        model.trn.acc,
+                        model.trn.kpp)
+rownames(model.comp) = 1:nrow(model.comp)
+colnames(model.comp) = c("Model Type",
+                         "Model Name",
+                         "Pre-process",
+                         "Down Sample",
+                         "Method",
+                         "Train: Accuracy",
+                         "Train: Kappa")
+```
+
+A total of fourteen models were fit: six `RF`, four `SVM`, and four `NN`. In addition to hyper-parameter tuning, models used 10-fold cross-validation repeated ten times. Models also alternated between using pre-processing and not, and using the down sampled dataset or not.
+
+The exception to both of these is `RF`, which in addition to `RCV` also used `OOB` and `tuneRF`, and also did not use the down sampled dataset, `wine.ds`, since maximum `accuracy` and `Kappa` were achieved on the `wine` dataset. 
+
+__Table 17__ below is a summary of model performance across each type. 
+
+\pagebreak
+
+\begin{center}
+Table 17: Summary of Model Performance by Type
+\end{center}
+
+```{r MC2}
+pander(model.comp, caption = "", justify = "left", 
+       split.cells = c("22%", rep("13%", times = 6)))
+```
+
+There are a few interesting points to make:
+
+* `RF` did the best overall, regardless of pre-processing or method
+* `SVM` achieved better performance when the down sampled dataset was not used, but pre-processing did not make a difference in performance
+* `NN` was the most sensitive to pre-processing and whether or not the down sampled dataset was used; achieving maximum `accuracy` and `Kappa` only when using pre-processing but not using the down sampled dataset
+* `NN` also saw the biggest difference in `accuracy` plots: when the down sampled dataset _was not_ used, accuracy was low with weight decay of 0.0 and high when accuracy was 0.1; when the down sampled data _was_ used, accuracy started close to the maximum when 3 or 5 hidden units were used
+
+# Conclusion \& Next Steps
+
+This exercise was a lot of fun and a good learning experience. Of all the models, I found neural nets to be most interesting. I would like to go back and do more in-depth hyper-parameter tuning on the `NN` and `SVM` models. I also find that I learn the most by making truth tables of possible model combinations and seeing what each lever does when pulled (i.e. pre-processing, down sampling, or changing methods). 
+
+The `RF` models continue to dominate in performance, with all models achieving maximum `accuracy` and `Kappa`. The only model to match this was `NN M2`, which used pre-processed but not down sampled data.
+
+Finally, it was also interesting to compare the `variable importance` plots for each model against the naive decision tree using the same dataset (`wine` or `wine.ds`) and seeing which variables did (or did not) match.
+
+\pagebreak
+
+# Appendix - Relevant R Code
+
+```{r Appendix, echo = T, eval = F}
+#==============================================================================
+# Enviornment Prep
+#==============================================================================
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(caret)
+library(MASS)
+library(pander)
+library(randomForest)
+library(rattle)
+library(rpart)
+
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+#------------------------------------------------------------------------------
+# Functions
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# GitHub
+#--------------------------------------
+# Create function to source functions from GitHub
+source.GitHub = function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", 
+                                          "cacert.pem", package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url = "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+
+#==============================================================================
+# Data Import & Prep
+#==============================================================================
+# Read data
+wine = read.csv("wine.data", header = F)
+
+# Assign column names
+colnames(wine) = c("class",
+                   "alcohol",
+                   "malic_acid",
+                   "ash",
+                   "ash_alcalinity",
+                   "magnesium",
+                   "phenols_total",
+                   "flavanoids",
+                   "phenols_nonflavanoid",
+                   "proanthocyanins",
+                   "color_intensity",
+                   "hue",
+                   "OD280_OD315",
+                   "proline")
+
+# Check variable classes and head
+str(wine)
+
+# Recode integers to numeric
+wine$magnesium = as.numeric(wine$magnesium)
+wine$proline = as.numeric(wine$proline)
+
+# Recode wine$class as factor
+wine$class = as.factor(wine$class)
+
+# Rename wine classes
+levels(wine$class) = c("class_1", "class_2", "class_3")
+
+#==============================================================================
+# Data Quality Check
+#==============================================================================
+# Check variable classes and head
+str(wine)
+
+# Summary statistics
+summary(wine)
+
+# Class frequencies
+fac.freq(wine$class, cat = F)
+
+# Down sample to balance classes
+set.seed(123)
+wine.ds = downSample(x = wine[, -1],
+                     y = wine[, 1])
+
+# Rename class variable
+colnames(wine.ds)[colnames(wine.ds)=="Class"] = "class"
+
+# Check class frequencies
+fac.freq(wine.ds$class, cat = F)
+
+#==============================================================================
+# Exploratory Data Analysis
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Traditional EDA - Quantitative
+#------------------------------------------------------------------------------
+# Summary statistics by class
+by(wine, wine$class, summary)
+
+#------------------------------------------------------------------------------
+# Traditional EDA - Qualitative
+#------------------------------------------------------------------------------
+# Create list of numeric variables
+cn.num = colnames(wine[, !sapply(wine, is.factor)])
+
+#--------------------------------------
+# Histograms by class
+#--------------------------------------
+for (i in cn.num){
+    temp = histogram(~ wine[, i] | wine[, "class"], 
+                     data = wine, layout = c(3, 1), col = "beige", 
+                     xlab = paste(i))
+    print(temp)
+    rm(temp); rm(i)
+}
+
+#--------------------------------------
+# Boxplots by class
+#--------------------------------------
+for (i in cn.num){
+    settings = list(box.rectangle = list(col = "black", fill = "beige"), 
+                    box.umbrella = list(col = "black"),
+                    plot.symbol = list(col = "black"))
+    temp = bwplot(~ wine[, i] | wine[, "class"], 
+                  data = wine, layout = c(3, 1), par.settings = settings, 
+                  xlab = paste(i))
+    print(temp)
+    rm(settings); rm(temp); rm(i)
+}
+
+#--------------------------------------
+# Correlation by class
+#--------------------------------------
+for (lvl in unique(wine$class)){
+    corrplot(cor(wine[wine$class == lvl, cn.num]), 
+             tl.col = "black", tl.cex = 0.8, tl.srt = 45)
+    rm(lvl)
+}
+
+#------------------------------------------------------------------------------
+# Model-Based EDA
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Decision tree
+#--------------------------------------
+# Model 1 - Original
+fancyRpartPlot(rpart(class ~ ., data = wine), sub = "")
+
+# Model 2 - Down Sampled
+fancyRpartPlot(rpart(class ~ ., data = wine.ds), sub = "")
+
+#--------------------------------------
+# Principal Components Analysis
+#--------------------------------------
+# Model 1 - Original
+wine$class = as.numeric(wine$class)
+wine.pcr.m1 = prcomp(wine, scale = T)
+biplot(wine.pcr.m1, xlabs = wine[, "class"])
+wine$class = as.factor(wine$class)
+levels(wine$class) = c("class_1", "class_2", "class_3")
+
+# Model 2 - Down Sampled
+wine.ds$class = as.numeric(wine.ds$class)
+wine.pcr.m2 = prcomp(wine.ds, scale = T)
+biplot(wine.pcr.m2, xlabs = wine.ds[, "class"])
+wine.ds$class = as.factor(wine.ds$class)
+levels(wine.ds$class) = c("class_1", "class_2", "class_3")
+
+#--------------------------------------
+# Linear Discriminant Analysis
+#--------------------------------------
+# Model 1 - Original
+wine.lda.m1 = lda(class ~ ., data = wine)
+levels(wine$class) = c("1", "2", "3")
+plot(wine.lda.m1)
+levels(wine$class) = c("class_1", "class_2", "class_3")
+
+# Model 2 - Down Sampled
+wine.lda.m2 = lda(class ~ ., data = wine.ds)
+levels(wine.ds$class) = c("1", "2", "3")
+plot(wine.lda.m2)
+levels(wine.ds$class) = c("class_1", "class_2", "class_3")
+
+#==============================================================================
+# Model Build
+#==============================================================================
+
+#------------------------------------------------------------------------------
+# Random Forest
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 1 | preProcess = F | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.rf.m1.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m1 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   trControl = wine.rf.m1.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m1$finalModel
+
+# In-sample fit
+wine.rf.m1.trn.pred = predict(wine.rf.m1, newdata = wine[, -1])
+wine.rf.m1.trn.cm = confusionMatrix(wine.rf.m1.trn.pred, wine$class)
+wine.rf.m1.trn.cm$table
+wine.rf.m1.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.rf.m1, main = "RCV: wine.rf.m1")
+plot(varImp(wine.rf.m1), main = "Var Imp: wine.rf.m1")
+
+#--------------------------------------
+# Model 2 | preProcess = T | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.rf.m2.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m2 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   preProcess = c("center", "scale"),
+                   trControl = wine.rf.m2.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m2$finalModel
+
+# In-sample fit
+wine.rf.m2.trn.pred = predict(wine.rf.m2, newdata = wine[, -1])
+wine.rf.m2.trn.cm = confusionMatrix(wine.rf.m2.trn.pred, wine$class)
+wine.rf.m2.trn.cm$table
+wine.rf.m2.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.rf.m2, main = "RCV: wine.rf.m2")
+plot(varImp(wine.rf.m2), main = "Var Imp: wine.rf.m2")
+
+#--------------------------------------
+# Model 3 | preProcess = F | balanced = F | method = oob
+#--------------------------------------
+# Specify fit parameters
+wine.rf.m3.fc= trainControl(method = "oob",
+                            classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m3 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   trControl = wine.rf.m3.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m3$finalModel
+
+# In-sample fit
+wine.rf.m3.trn.pred = predict(wine.rf.m3, newdata = wine[, -1])
+wine.rf.m3.trn.cm = confusionMatrix(wine.rf.m3.trn.pred, wine$class)
+wine.rf.m3.trn.cm$table
+wine.rf.m3.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.rf.m3, main = "OOB: wine.rf.m3")
+plot(varImp(wine.rf.m3), main = "Var Imp: wine.rf.m3")
+
+#--------------------------------------
+# Model 4 | preProcess = T | balanced = F | method = oob
+#--------------------------------------
+# Specify fit parameters
+wine.rf.m4.fc = trainControl(method = "oob",
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m4 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   preProcess = c("center", "scale"),
+                   trControl = wine.rf.m4.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m4$finalModel
+
+# In-sample fit
+wine.rf.m4.trn.pred = predict(wine.rf.m4, newdata = wine[, -1])
+wine.rf.m4.trn.cm = confusionMatrix(wine.rf.m4.trn.pred, wine$class)
+wine.rf.m4.trn.cm$table
+wine.rf.m4.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.rf.m4, main = "OOB: wine.rf.m4")
+plot(varImp(wine.rf.m4), main = "Var Imp: wine.rf.m4")
+
+#--------------------------------------
+# Model 5 | preProcess = F | balanced = F | method = tuneRF
+#--------------------------------------
+# Tune value of mtry
+set.seed(123)
+wine.rf.m5.tune = tuneRF(x = wine[, -1],
+                         y = wine[, 1],
+                         ntreeTry = 500,
+                         stepFactor = 1.5,
+                         improve = 0.01,
+                         trace = T,
+                         plot = T)
+
+wine.rf.m5.fc = trainControl(method = "none")
+wine.rf.m5.grid = data.frame(mtry = 3)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m5 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   tuneGrid = wine.rf.m5.grid,
+                   trControl = wine.rf.m5.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m5$finalModel
+
+# In-sample fit
+wine.rf.m5.trn.pred = predict(wine.rf.m5, newdata = wine[, -1])
+wine.rf.m5.trn.cm = confusionMatrix(wine.rf.m5.trn.pred, wine$class)
+wine.rf.m5.trn.cm$table
+wine.rf.m5.trn.cm$overall[1:2]
+
+# Plots
+plot(varImp(wine.rf.m5), main = "Var Imp: wine.rf.m5")
+
+#--------------------------------------
+# Model 6 | preProcess = T | balanced = F | method = tuneRF
+#--------------------------------------
+# Tune value of mtry
+set.seed(123)
+wine.rf.m6.tune = tuneRF(x = wine[, -1],
+                         y = wine[, 1],
+                         ntreeTry = 500,
+                         stepFactor = 1.5,
+                         improve = 0.01,
+                         trace = T,
+                         plot = T)
+
+wine.rf.m6.fc = trainControl(method = "none")
+wine.rf.m6.grid = data.frame(mtry = 3)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.rf.m6 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "rf",
+                   preProcess = c("center", "scale"),
+                   tuneGrid = wine.rf.m6.grid,
+                   trControl = wine.rf.m6.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.rf.m6$finalModel
+
+# In-sample fit
+wine.rf.m6.trn.pred = predict(wine.rf.m6, newdata = wine[, -1])
+wine.rf.m6.trn.cm = confusionMatrix(wine.rf.m6.trn.pred, wine$class)
+wine.rf.m6.trn.cm$table
+wine.rf.m6.trn.cm$overall[1:2]
+
+# Plots
+plot(varImp(wine.rf.m6), main = "Var Imp: wine.rf.m6")
+
+#------------------------------------------------------------------------------
+# Support Vector Machine
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 1 | preProcess = F | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.svm.m1.fc = trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10,
+                              classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.svm.m1 = train(x = wine[, -1],
+                    y = wine[, 1],
+                    method = "svmRadialWeights",
+                    trControl = wine.svm.m1.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.svm.m1$finalModel
+
+# In-sample fit
+wine.svm.m1.trn.pred = predict(wine.svm.m1, newdata = wine[, -1])
+wine.svm.m1.trn.cm = confusionMatrix(wine.svm.m1.trn.pred, wine$class)
+wine.svm.m1.trn.cm$table
+wine.svm.m1.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.svm.m1, main = "RCV: wine.svm.m1")
+plot(varImp(wine.svm.m1), main = "Var Imp: wine.svm.m1")
+
+#--------------------------------------
+# Model 2 | preProcess = T | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.svm.m2.fc = trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10,
+                              classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.svm.m2 = train(x = wine[, -1],
+                    y = wine[, 1],
+                    method = "svmRadialWeights",
+                    preProcess = c("center", "scale"),
+                    trControl = wine.svm.m2.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.svm.m2$finalModel
+
+# In-sample fit
+wine.svm.m2.trn.pred = predict(wine.svm.m2, newdata = wine[, -1])
+wine.svm.m2.trn.cm = confusionMatrix(wine.svm.m2.trn.pred, wine$class)
+wine.svm.m2.trn.cm$table
+wine.svm.m2.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.svm.m2, main = "RCV: wine.svm.m2")
+plot(varImp(wine.svm.m2), main = "Var Imp: wine.svm.m2")
+
+#--------------------------------------
+# Model 3 | preProcess = F | balanced = T | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.svm.m3.fc = trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10,
+                              classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.svm.m3 = train(x = wine.ds[, -14],
+                    y = wine.ds[, 14],
+                    method = "svmRadialWeights",
+                    trControl = wine.svm.m3.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.svm.m3$finalModel
+
+# In-sample fit
+wine.svm.m3.trn.pred = predict(wine.svm.m3, newdata = wine[, -1])
+wine.svm.m3.trn.cm = confusionMatrix(wine.svm.m3.trn.pred, wine$class)
+wine.svm.m3.trn.cm$table
+wine.svm.m3.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.svm.m3, main = "RCV: wine.svm.m3")
+plot(varImp(wine.svm.m3), main = "Var Imp: wine.svm.m3")
+
+#--------------------------------------
+# Model 4 | preProcess = T | balanced = T | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.svm.m4.fc = trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10,
+                              classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.svm.m4 = train(x = wine.ds[, -14],
+                    y = wine.ds[, 14],
+                    method = "svmRadialWeights",
+                    preProcess = c("center", "scale"),
+                    trControl = wine.svm.m4.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.svm.m4$finalModel
+
+# In-sample fit
+wine.svm.m4.trn.pred = predict(wine.svm.m4, newdata = wine[, -1])
+wine.svm.m4.trn.cm = confusionMatrix(wine.svm.m4.trn.pred, wine$class)
+wine.svm.m4.trn.cm$table
+wine.svm.m4.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.svm.m4, main = "RCV: wine.svm.m4")
+plot(varImp(wine.svm.m4), main = "Var Imp: wine.svm.m4")
+
+#------------------------------------------------------------------------------
+# Neural Net
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# Model 1 | preProcess = F | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.nn.m1.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.nn.m1 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "nnet",
+                   trace = F,
+                   trControl = wine.nn.m1.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.nn.m1$finalModel
+
+# In-sample fit
+wine.nn.m1.trn.pred = predict(wine.nn.m1, newdata = wine[, -1])
+wine.nn.m1.trn.cm = confusionMatrix(wine.nn.m1.trn.pred, wine$class)
+wine.nn.m1.trn.cm$table
+wine.nn.m1.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.nn.m1, main = "RCV: wine.nn.m1")
+wine.nn.m1.vi = varImp(wine.nn.m1)
+wine.nn.m1.vi$importance = as.data.frame(wine.nn.m1.vi$importance)[, -1]
+plot(wine.nn.m1.vi, main = "Var Imp: wine.nn.m1")
+
+#--------------------------------------
+# Model 2 | preProcess = T | balanced = F | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.nn.m2.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.nn.m2 = train(x = wine[, -1],
+                   y = wine[, 1],
+                   method = "nnet",
+                   trace = F,
+                   preProcess = c("center", "scale"),
+                   trControl = wine.nn.m2.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.nn.m2$finalModel
+
+# In-sample fit
+wine.nn.m2.trn.pred = predict(wine.nn.m2, newdata = wine[, -1])
+wine.nn.m2.trn.cm = confusionMatrix(wine.nn.m2.trn.pred, wine$class)
+wine.nn.m2.trn.cm$table
+wine.nn.m2.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.nn.m2, main = "RCV: wine.nn.m2")
+wine.nn.m2.vi = varImp(wine.nn.m2)
+wine.nn.m2.vi$importance = as.data.frame(wine.nn.m2.vi$importance)[, -1]
+plot(wine.nn.m2.vi, main = "Var Imp: wine.nn.m2")
+
+#--------------------------------------
+# Model 3 | preProcess = F | balanced = T | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.nn.m3.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.nn.m3 = train(x = wine.ds[, -14],
+                   y = wine.ds[, 14],
+                   method = "nnet",
+                   trace = F,
+                   trControl = wine.nn.m3.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.nn.m3$finalModel
+
+# In-sample fit
+wine.nn.m3.trn.pred = predict(wine.nn.m3, newdata = wine[, -1])
+wine.nn.m3.trn.cm = confusionMatrix(wine.nn.m3.trn.pred, wine$class)
+wine.nn.m3.trn.cm$table
+wine.nn.m3.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.nn.m3, main = "RCV: wine.nn.m3")
+wine.nn.m3.vi = varImp(wine.nn.m3)
+wine.nn.m3.vi$importance = as.data.frame(wine.nn.m3.vi$importance)[, -1]
+plot(wine.nn.m3.vi, main = "Var Imp: wine.nn.m3")
+
+#--------------------------------------
+# Model 4 | preProcess = T | balanced = T | method = rcv
+#--------------------------------------
+# Specify fit parameters
+wine.nn.m4.fc = trainControl(method = "repeatedcv",
+                             number = 10,
+                             repeats = 10,
+                             classProbs = T)
+
+# Build model
+ptm = proc.time()
+set.seed(123)
+wine.nn.m4 = train(x = wine.ds[, -14],
+                   y = wine.ds[, 14],
+                   method = "nnet",
+                   trace = F,
+                   preProcess = c("center", "scale"),
+                   trControl = wine.nn.m4.fc)
+proc.time() - ptm; rm(ptm)
+
+# In-sample summary
+wine.nn.m4$finalModel
+
+# In-sample fit
+wine.nn.m4.trn.pred = predict(wine.nn.m4, newdata = wine[, -1])
+wine.nn.m4.trn.cm = confusionMatrix(wine.nn.m4.trn.pred, wine$class)
+wine.nn.m4.trn.cm$table
+wine.nn.m4.trn.cm$overall[1:2]
+
+# Plots
+plot(wine.nn.m4, main = "RCV: wine.nn.m4")
+wine.nn.m4.vi = varImp(wine.nn.m4)
+wine.nn.m4.vi$importance = as.data.frame(wine.nn.m4.vi$importance)[, -1]
+plot(wine.nn.m4.vi, main = "Var Imp: wine.nn.m4")
+
+#==============================================================================
+# Model Comparison
+#==============================================================================
+
+#--------------------------------------
+# Table Results
+#--------------------------------------
+# Model Types
+model.types = cbind(c(rep("Random Forest", each = 6),
+                      rep(c("SVM", "Neural Net"), each = 4)))
+
+# Model Names
+model.reps = c("M1", "M2", "M3", "M4")
+model.names = cbind(c(model.reps,
+                      "M5",
+                      "M6",
+                      rep(model.reps, times = 2)))
+
+# Pre-process
+model.pp = cbind(rep(c("0", "1"), times = 7))
+
+# Down Sample
+model.ds = cbind(c(rep("0", each = 6),
+                   rep(c("0", "1"), each = 2, times = 2)))
+
+# Method
+model.meth = cbind(c(rep("RCV", each = 2),
+                     rep("OOB", each = 2),
+                     rep("tuneRF", each = 2),
+                     rep("RCV", each = 8)))
+
+# Accuracy, Train
+model.trn.acc = rbind(wine.rf.m1.trn.cm$overall[1],
+                      wine.rf.m2.trn.cm$overall[1],
+                      wine.rf.m3.trn.cm$overall[1],
+                      wine.rf.m4.trn.cm$overall[1],
+                      wine.rf.m5.trn.cm$overall[1],
+                      wine.rf.m6.trn.cm$overall[1],
+                      wine.svm.m1.trn.cm$overall[1],
+                      wine.svm.m2.trn.cm$overall[1],
+                      wine.svm.m3.trn.cm$overall[1],
+                      wine.svm.m4.trn.cm$overall[1],
+                      wine.nn.m1.trn.cm$overall[1],
+                      wine.nn.m2.trn.cm$overall[1],
+                      wine.nn.m3.trn.cm$overall[1],
+                      wine.nn.m4.trn.cm$overall[1])
+
+# Kappa, Train
+model.trn.kpp = rbind(wine.rf.m1.trn.cm$overall[2],
+                      wine.rf.m2.trn.cm$overall[2],
+                      wine.rf.m3.trn.cm$overall[2],
+                      wine.rf.m4.trn.cm$overall[2],
+                      wine.rf.m5.trn.cm$overall[2],
+                      wine.rf.m6.trn.cm$overall[2],
+                      wine.svm.m1.trn.cm$overall[2],
+                      wine.svm.m2.trn.cm$overall[2],
+                      wine.svm.m3.trn.cm$overall[2],
+                      wine.svm.m4.trn.cm$overall[2],
+                      wine.nn.m1.trn.cm$overall[2],
+                      wine.nn.m2.trn.cm$overall[2],
+                      wine.nn.m3.trn.cm$overall[2],
+                      wine.nn.m4.trn.cm$overall[2])
+
+# Data Frame
+model.comp = data.frame(model.types,
+                        model.names,
+                        model.pp,
+                        model.ds,
+                        model.meth,
+                        model.trn.acc,
+                        model.trn.kpp)
+rownames(model.comp) = 1:nrow(model.comp)
+colnames(model.comp) = c("Model Type",
+                         "Model Name",
+                         "Pre-process",
+                         "Down Sample",
+                         "Method",
+                         "Train: Accuracy",
+                         "Train: Kappa")
+rm(list = ls(pattern = "model"))
+```
+
+```{r FIN, echo = T}
+# FIN
+sessionInfo()
+```
