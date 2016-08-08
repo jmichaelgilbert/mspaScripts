@@ -34,14 +34,14 @@ knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
 # Set all figures to be centered
 knitr::opts_chunk$set(fig.align = "center")
 
-# Set and preserve par(mfcol()) between chunks (calls to it can be hidden)
-#knitr::opts_knit$set(global.par = T)
+# Set echo to off
+knitr::opts_chunk$set(echo = F)
 ```
 
 ```{r setup_FUN, include = F}
-#==============================================================================
-# Functions
-#==============================================================================
+#--------------------------------------
+# GitHub
+#--------------------------------------
 # Create function to source functions from GitHub
 source.GitHub = function(url){
     require(RCurl)
@@ -83,7 +83,7 @@ An appendix of relevant `R` code used in producing the report is included. The c
 # Import
 #--------------------------------------
 # Read data
-tms = read.csv("~/Two_Months_Salary.csv", header = T)
+tms = read.csv("Two_Months_Salary.csv", header = T)
 
 # Check dimensions
 dim(tms)
@@ -156,7 +156,7 @@ __Table 1__ below shows the class of each variable after recoding. Brief variabl
 Table 1: Variable Dictionary for `TMS` Dataset
 \end{center}
 
-```{r DQC1, echo = F}
+```{r DQC1}
 # Build table
 tms.dict = as.data.frame(sapply(tms, class))
 tms.def = c("Weight of diamond in carats (1 carat = 200mg)", 
@@ -181,7 +181,7 @@ __Table 2__ below shows summary statistics for each variable in the `TMS` datase
 Table 2: Summary Statistics of `TMS` Variables
 \end{center}
 
-```{r DQC2, echo = F}
+```{r DQC2}
 pander(summary(tms[1:4]), caption = "", justify = "left")
 pander(summary(tms[5:7]), caption = "", justify = "left")
 ```
@@ -236,7 +236,7 @@ _Unfortunately_, this approach did not really uncover any interesting relationsh
 Table 3: Summary Statistics for `price` by Level of `color`
 \end{center}
 
-```{r EDA1, echo = F}
+```{r EDA1}
 pander(num.freq(tms, "color", "price"), caption = "", justify = "left")
 ```
 
@@ -253,7 +253,7 @@ _A final observation_: the mean values for both `price` and `carat` by `cut` wer
 Table 5: Summary Statistics for `price` by Level of `cut`
 \end{center}
 
-```{r EDA2, echo = F}
+```{r EDA2}
 pander(num.freq(tms, "cut", "price"), caption = "", justify = "left")
 ```
 
@@ -261,7 +261,7 @@ pander(num.freq(tms, "cut", "price"), caption = "", justify = "left")
 Table 6: Summary Statistics for `carat` by Level of `cut`
 \end{center}
 
-```{r EDA3, echo = F}
+```{r EDA3}
 pander(num.freq(tms, "cut", "carat"), caption = "", justify = "left")
 ```
 
@@ -278,7 +278,7 @@ For the `numeric` variable `carat`, a panel of four plots was examined. The plot
 Figure 1: Panel Plots for `carat`
 \end{center}
 
-```{r EDA4, echo = F, fig.height = 6.5}
+```{r EDA4, fig.height = 6.5}
 num.plots(tms, "carat", "price", norm = T)
 ```
 
@@ -288,7 +288,7 @@ For the `factor` variables, boxplots were created of the levels (x-axis) versus 
 Figure 2: Boxplots of `channel` Levels Versus `price`
 \end{center}
 
-```{r EDA5, echo = F, fig.width = 4.75, fig.height = 4}
+```{r EDA5, fig.width = 4.75, fig.height = 4}
 fac.boxplot(tms, "channel", "price")
 ```
 
@@ -305,7 +305,7 @@ Boxplots of levels of the variable `color` versus `price` show many potential ou
 Figure 3: Boxplots of `color` Levels Versus `price` and `carat`
 \end{center}
 
-```{r EDA6, echo = F, fig.width = 4.75, fig.height = 8}
+```{r EDA6, fig.width = 4.75, fig.height = 8}
 par(mfrow=c(2, 1))
 fac.boxplot(tms, "color", "price")
 fac.boxplot(tms, "color", "carat")
@@ -318,7 +318,7 @@ Boxplots of levels of the variable `cut` versus `price`, and `cut` versus `carat
 Figure 4: Boxplots of `cut` Levels Versus `price` and `carat`
 \end{center}
 
-```{r EDA7, echo = F, fig.width = 4.75, fig.height = 8}
+```{r EDA7, fig.width = 4.75, fig.height = 8}
 par(mfrow=c(2, 1))
 fac.boxplot(tms, "cut", "price")
 fac.boxplot(tms, "cut", "carat")
@@ -331,7 +331,7 @@ Boxplots of levels of the variable `channel` versus `price` _show more potential
 Figure 5: Boxplots of `channel` Levels Versus `price` and `carat`
 \end{center}
 
-```{r EDA8, echo = F, fig.width = 4.75, fig.height = 8}
+```{r EDA8, fig.width = 4.75, fig.height = 8}
 par(mfrow=c(2, 1))
 fac.boxplot(tms, "channel", "price")
 fac.boxplot(tms, "channel", "carat")
@@ -344,7 +344,7 @@ Boxplots of levels of the variable `store` versus `price`, and `store` versus `c
 Figure 6: Boxplots of `store` Levels Versus `price` and `carat`
 \end{center}
 
-```{r EDA9, echo = F, fig.width = 4.75, fig.height = 8}
+```{r EDA9, fig.width = 4.75, fig.height = 8}
 par(mfrow=c(2, 1))
 fac.boxplot(tms, "store", "price")
 fac.boxplot(tms, "store", "carat")
@@ -368,7 +368,7 @@ The first node is the root node. The mean value of the response variable `price`
 Figure 7: Naive Tree Plot of `price`
 \end{center}
 
-```{r EDA10, echo = F, fig.height = 6.5}
+```{r EDA10, fig.height = 6.5}
 fancyRpartPlot(rpart(tms$price ~ ., data = tms), sub = "", cex = 0.8)
 ```
 
@@ -493,7 +493,7 @@ The model chose variables `carat`, `color_I`, and `color_J` (specific levels are
 Figure 8: Residual Plots of Model 1
 \end{center}
 
-```{r MB3, echo = F, fig.height = 6.5}
+```{r MB3, fig.height = 6.5}
 par(mfrow=c(2, 2))
 plot(tms.train.bwd.m1.lm.1, ask = F)
 par(mfrow=c(1, 1))
@@ -507,7 +507,7 @@ Using the same chosen predictor variables, another model was run using a natural
 Figure 9: Residual Plots of Model 1, Natural Log Response
 \end{center}
 
-```{r MB4, echo = F, fig.height = 6.5}
+```{r MB4, fig.height = 6.5}
 par(mfrow=c(2, 2))
 plot(tms.train.bwd.m1.lm.2, ask = F)
 par(mfrow=c(1, 1))
@@ -571,7 +571,7 @@ The model chose variables `carat`, `color_I`, `color_J`, and `clarity_I1` (speci
 Figure 10: Residual Plots of Model 2, Natural Log Response
 \end{center}
 
-```{r MB6, echo = F, fig.height = 6.5}
+```{r MB6, fig.height = 6.5}
 par(mfrow=c(2, 2))
 plot(tms.train.bwd.m2.lm, ask = F)
 par(mfrow=c(1, 1))
@@ -673,7 +673,7 @@ The model chose variables `carat`, `color_I`, `color_J`, and `color_L` (specific
 Figure 11: Residual Plots of Model 4, Natural Log Response
 \end{center}
 
-```{r MB9, echo = F, fig.height = 6.5}
+```{r MB9, fig.height = 6.5}
 par(mfrow=c(2, 2))
 plot(tms.train.seq.m1.lm, ask = F)
 par(mfrow=c(1, 1))
@@ -740,7 +740,7 @@ Residual plots from the model are shown in __Figure 12__ below.
 Figure 12: Residual Plots of Model 5, Natural Log Response
 \end{center}
 
-```{r MB11, echo = F, fig.height = 6.5}
+```{r MB11, fig.height = 6.5}
 par(mfrow=c(2, 2))
 plot(tms.train.aic.m1.lm, ask = F)
 par(mfrow=c(1, 1))
@@ -869,7 +869,7 @@ The seventh model chose variables `carat`, `clarity_I1`, `channel_Mall`, and `IV
 Figure 12: Residual Plots of Model 7, Natural Log Response
 \end{center}
 
-```{r MB15, echo = F, fig.height = 6.5}
+```{r MB15, fig.height = 6.5}
 par(mfrow=c(2, 2))
 plot(tms.train.seq.m2.lm, ask = F)
 par(mfrow=c(1, 1))
@@ -928,7 +928,7 @@ The eighth model chose variables `carat`, and interactions `color_H:clarity_VS1`
 Figure 13: Residual Plots of Model 8, Natural Log Response
 \end{center}
 
-```{r MB17, echo = F, fig.height = 6.5}
+```{r MB17, fig.height = 6.5}
 par(mfrow=c(2, 2))
 plot(tms.train.seq.m3.lm, ask = F)
 par(mfrow=c(1, 1))
@@ -966,7 +966,7 @@ The decision tree with the lowest `RMSE` value was `pruned`, `smoothed`, and did
 Figure 14: Decision Tree of Model 9, Natural Log Response
 \end{center}
 
-```{r MB19, echo = F, fig.height = 6.5}
+```{r MB19, fig.height = 6.5}
 plot(tms.train.dt.m1.ct$finalModel)
 ```
 
@@ -1002,7 +1002,7 @@ The random forest with the lowest `RMSE` value used `500` trees and tried `18` v
 Figure 15: Random Forest Error of Model 10, Natural Log Response
 \end{center}
 
-```{r MB21, echo = F}
+```{r MB21}
 plot(tms.train.rf.m1.ct$finalModel)
 ```
 
@@ -1014,7 +1014,7 @@ This section compares the fit on the four models built in the _Model Constructio
 Table 7: Comparison of Model Fit by Type
 \end{center}
 
-```{r MC1, echo = F}
+```{r MC1}
 #==============================================================================
 # Model Comparison
 #==============================================================================
@@ -1124,10 +1124,37 @@ For next steps, I would like to play with the hyperparameter settings to see how
 
 ## Appendix - Relevant R Code
 
-```{r Appendix, eval = F}
+```{r Appendix, echo = T, eval = F}
 #==============================================================================
+# Enviornment Prep
+#==============================================================================
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(caret)
+library(car)
+library(leaps)
+library(pander)
+library(rattle)
+library(rpart)
+
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set echo to off
+knitr::opts_chunk$set(echo = F)
+
+#------------------------------------------------------------------------------
 # Functions
-#==============================================================================
+#------------------------------------------------------------------------------
+
+#--------------------------------------
+# GitHub
+#--------------------------------------
 # Create function to source functions from GitHub
 source.GitHub = function(url){
     require(RCurl)
@@ -1151,7 +1178,7 @@ source.GitHub(url); rm(url)
 # Import
 #--------------------------------------
 # Read data
-tms = read.csv("~/Two_Months_Salary.csv", header = T)
+tms = read.csv("Two_Months_Salary.csv", header = T)
 
 # Check dimensions
 dim(tms)
@@ -1734,7 +1761,7 @@ colnames(model.comp) = c("Model Name", "RMSE, Train", "RMSE, Test",
                          "Percent Change")
 ```
 
-```{r FIN, echo = F}
+```{r FIN, echo = T}
 # FIN
 sessionInfo()
 ```
