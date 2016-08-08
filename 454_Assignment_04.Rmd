@@ -77,7 +77,7 @@ An appendix of relevant `R` code used in producing the report is included. The c
 # Data Import & Prep
 #==============================================================================
 # Read data
-wine = read.csv("~/wine.data", header = F)
+wine = read.csv("wine.data", header = F)
 
 # Assign column names
 colnames(wine) = c("class",
