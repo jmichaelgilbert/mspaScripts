@@ -33,12 +33,15 @@ knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
 
 # Set all figures to be centered
 knitr::opts_chunk$set(fig.align = "center")
+
+# Set echo to off
+knitr::opts_chunk$set(echo = F)
 ```
 
 ```{r setup_FUN, include = F}
-#==============================================================================
+#------------------------------------------------------------------------------
 # Functions
-#==============================================================================
+#------------------------------------------------------------------------------
 
 #--------------------------------------
 # GitHub
@@ -231,7 +234,7 @@ The distribution of the response variable `y` is shown in __Table 1__ below. The
 Table 1: Distribution of Response in Spam Dataset
 \end{center}
 
-```{r DQC1, echo = F}
+```{r DQC1}
 pander(spam.dist, caption = "", justify = "left")
 ```
 
@@ -251,7 +254,7 @@ __Table 2__ below contains all attribute names under the convention described ab
 Table 2: Attribute names for Spam Dataset
 \end{center}
 
-```{r DQC2, echo = F}
+```{r DQC2}
 pander(as.data.frame(colnames(spam)), caption = "", justify = "left")
 ```
 
@@ -320,7 +323,7 @@ Five boxplots are included below. Each shows class distinction between `Not_Spam
 Figure 1: Boxplots of word\_freq\_free by Response Class
 \end{center}
 
-```{r EDA1, echo = F}
+```{r EDA1}
 num.boxplot(spam.log, "word_freq_free", "y", vs = T)
 ```
 
@@ -328,7 +331,7 @@ num.boxplot(spam.log, "word_freq_free", "y", vs = T)
 Figure 2: Boxplots of word\_freq\_your by Response Class
 \end{center}
 
-```{r EDA2, echo = F}
+```{r EDA2}
 num.boxplot(spam.log, "word_freq_your", "y", vs = T)
 ```
 
@@ -336,7 +339,7 @@ num.boxplot(spam.log, "word_freq_your", "y", vs = T)
 Figure 3: Boxplots of word\_freq\_hp by Response Class
 \end{center}
 
-```{r EDA3, echo = F}
+```{r EDA3}
 num.boxplot(spam.log, "word_freq_hp", "y", vs = T)
 ```
 
@@ -344,7 +347,7 @@ num.boxplot(spam.log, "word_freq_hp", "y", vs = T)
 Figure 4: Boxplots of capital\_run\_length\_longest by Response Class
 \end{center}
 
-```{r EDA4, echo = F}
+```{r EDA4}
 num.boxplot(spam.log, "capital_run_length_longest", "y", vs = T)
 ```
 
@@ -352,7 +355,7 @@ num.boxplot(spam.log, "capital_run_length_longest", "y", vs = T)
 Figure 5: Boxplots of capital\_run\_length\_total by Response Class
 \end{center}
 
-```{r EDA5, echo = F}
+```{r EDA5}
 num.boxplot(spam.log, "capital_run_length_total", "y", vs = T)
 ```
 
@@ -376,7 +379,7 @@ The first node is the root node. The root node is colored green, because 61% of 
 Figure 6: Naive Tree Plot of Spam Dataset
 \end{center}
 
-```{r EDA6, echo = F, fig.height = 6.5}
+```{r EDA6, fig.height = 6.5}
 fancyRpartPlot(rpart(spam$y ~ ., data = spam), sub = "", cex = 0.7)
 ```
 
@@ -417,7 +420,7 @@ The `Spam` dataset was split by a stratified random sample into a 70/30 training
 Table 3: Distribution of Response in Spam \& Spam - Training Datasets
 \end{center}
 
-```{r MB2, echo = F}
+```{r MB2}
 # Create table of variable information
 var.occ.raw = table(spam$y)
 var.occ.pct = round(prop.table(var.occ.raw), digits = 4) * 100
@@ -559,7 +562,7 @@ A `ROC` curve was produced for predictions on the _training_ dataset, with the i
 Figure 6: ROC Curve for spam.glm.m1 (Training)
 \end{center}
 
-```{r MB4, echo = F, fig.height = 5.75}
+```{r MB4, fig.height = 5.75}
 par(pty = "s")
 plot(spam.glm.m1.trn.roc, col = "blue", main = "ROC Curve for spam.glm.m1")
 par(pty = "m")
@@ -573,7 +576,7 @@ A `ROC` curve was produced for predictions on the _training_ dataset, with the i
 Figure 7: ROC Curve for spam.glm.m2 (Training)
 \end{center}
 
-```{r MB5, echo = F, fig.height = 5.75}
+```{r MB5, fig.height = 5.75}
 par(pty = "s")
 plot(spam.glm.m2.trn.roc, col = "blue", main = "ROC Curve for spam.glm.m2")
 par(pty = "m")
@@ -694,7 +697,7 @@ A `ROC` curve was produced for predictions on the _training_ dataset, with the i
 Figure 8: ROC Curve for spam.dt.m1 (Training)
 \end{center}
 
-```{r MB7, echo = F, fig.height = 5.75}
+```{r MB7, fig.height = 5.75}
 par(pty = "s")
 plot(spam.dt.m1.trn.roc, col = "blue", main = "ROC Curve for spam.dt.m1")
 par(pty = "m")
@@ -817,7 +820,7 @@ A `ROC` curve was produced for predictions on the _training_ dataset, with the i
 Figure 9: ROC Curve for spam.svm.m1 (Training)
 \end{center}
 
-```{r MB9, echo = F, fig.height = 5.75}
+```{r MB9, fig.height = 5.75}
 par(pty = "s")
 plot(spam.svm.m1.trn.roc, col = "blue", main = "ROC Curve for spam.svm.m1")
 par(pty = "m")
@@ -831,7 +834,7 @@ A `ROC` curve was produced for predictions on the _training_ dataset, with the i
 Figure 10: ROC Curve for spam.svm.m2 (Training)
 \end{center}
 
-```{r MB10, echo = F, fig.height = 5.75}
+```{r MB10, fig.height = 5.75}
 par(pty = "s")
 plot(spam.svm.m2.trn.roc, col = "blue", main = "ROC Curve for spam.svm.m2")
 par(pty = "m")
@@ -954,7 +957,7 @@ A `ROC` curve was produced for predictions on the _training_ dataset, with the i
 Figure 11: ROC Curve for spam.rf.m1 (Training)
 \end{center}
 
-```{r MB12, echo = F, fig.height = 5.75}
+```{r MB12, fig.height = 5.75}
 par(pty = "s")
 plot(spam.rf.m1.trn.roc, col = "blue", main = "ROC Curve for spam.rf.m1")
 par(pty = "m")
@@ -970,7 +973,7 @@ This section compares the fit on the four models built in the _Model Constructio
 Table 4: Comparison of Model Fit by Type
 \end{center}
 
-```{r MC1, echo = F}
+```{r MC1}
 #==============================================================================
 # Model Comparison
 #==============================================================================
@@ -1051,7 +1054,7 @@ Although the `Logistic Regression` model came in third place, the interpretabili
 
 ## Appendix - Relevant R Code
 
-```{r Appendix, eval = F}
+```{r Appendix, echo = T, eval = F}
 #==============================================================================
 # Enviornment Prep
 #==============================================================================
@@ -1071,6 +1074,9 @@ knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
 
 # Set all figures to be centered
 knitr::opts_chunk$set(fig.align = "center")
+
+# Set echo to off
+knitr::opts_chunk$set(echo = F)
 
 #------------------------------------------------------------------------------
 # Functions
@@ -1737,7 +1743,7 @@ colnames(model.comp) = c("Model Type",
                          "Test: Accuracy")
 ```
 
-```{r FIN, echo = F}
+```{r FIN, echo = T}
 # FIN
 sessionInfo()
 ```
