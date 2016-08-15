@@ -1,0 +1,82 @@
+---
+title: "454_Rolling_Mean"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+  pdf_document: default
+geometry: margin = 0.5in
+---
+\
+```{r setup, include = F}
+knitr::opts_chunk$set(echo = T)
+```
+
+# Rolling Mean
+
+Write a function `roll.mean(x,k)` where `x` is the input vector and `k` is the number of observations to use to compute the rolling mean. The function should output a vector of rolling means. Components of the output vector where a rolling mean cannot be computed should contain the value `NA`.
+
+Post your `R` function and a test function call using an input vector of all `1`'s.
+
+# Function
+
+This one took a bit of massaging, and I'm sure there is a more efficient way to code it. The value of `k` marks the number of observations to compute the rolling mean over, _including_ the first observation. 
+
+```{r Roll_Mean}
+#==============================================================================
+# Function
+#==============================================================================
+roll.mean = function(x, k){
+    temp = NULL
+    for (num.val in 1:(length(x)-k+1)){
+        temp[num.val] = mean(x[num.val:(num.val+k-1)])
+    }
+    return(temp)
+}
+```
+
+When I do `1:(length(x)-k+1)`, I add one back in because (for example) `10 - 3 = 7`, but `7` to `10` really contains four observations, not three. And we want the rolling mean to cover three observations, which means it stops at observation eight, and takes the arithmetic mean of observations eight, nine, and ten.
+
+Similarly, when I do `mean(x[num.val:(num.val+k-1)])`, I subtract one out because `num.val` initalizes at `1`, and (for example) `1 + 3 = 4`, but we want the rolling mean to cover three observations, not four. Backing one out corrects that.
+
+# Function Call
+
+I called the function on three made-up vectors:
+
+* The first is a vector of all 1's; 
+* The second is a vector of values randomly generated to follow a normal distribution; 
+* The third is the same vector as the second, but replaces the value in observation `8` with `NA`.
+
+I used the second and third vectors because it was hard to tell if the start and stop points in the function were working correctly with a vector of all `1`'s.
+
+One final note - the observation numbers returned in the vectors below might appear a bit confusing: `[1]` is the first rolling mean value, covering observations `1` through `3` in the input vector. In the third returned vector, `NA` starts at the sixth rolling mean value, which covers observations `6` through `8`. 
+
+```{r FUN}
+#==============================================================================
+# Function Call
+#==============================================================================
+# Vector of 1's
+df = rep(1, 10)
+roll.mean(df, 3)
+
+# RNG, Normal
+set.seed(123)
+df = rnorm(10)
+roll.mean(df, 3)
+
+# RNG, Normal, NA
+set.seed(123)
+df = rnorm(10)
+df[8] = NA
+roll.mean(df, 3)
+```
+
+```{r FIN}
+# Session Info
+sessionInfo()
+```
