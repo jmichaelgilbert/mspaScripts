@@ -1,0 +1,198 @@
+---
+title: "454_Genetic_Algorithms"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+    number_sections: yes
+  pdf_document: default
+geometry: margin = 0.5in
+---
+\
+```{r setup_R, include = F, message = F, warning = F}
+# Clear workspace
+rm(list=ls())
+
+# Load packages
+library(caret)
+library(GA)
+library(pander)
+```
+
+```{r setup_knitr, include = F}
+# Set code width to 60 to contain within PDF margins
+knitr::opts_chunk$set(tidy = F, tidy.opts = list(width.cutoff = 60))
+
+# Set all figures to be centered
+knitr::opts_chunk$set(fig.align = "center")
+
+# Set echo to off
+knitr::opts_chunk$set(echo = F)
+```
+
+```{r}
+#==============================================================================
+# Data Import & Prep
+#==============================================================================
+
+# Read data
+tms = read.csv("C:/Users/michael.gilbert/Dropbox/R/Two_Months_Salary.csv", 
+               header = T)
+
+# Recode integers to numeric
+tms$price = as.numeric(tms$price)
+
+# Recode integers to factor
+tms$color = as.factor(tms$color)
+tms$clarity = as.factor(tms$clarity)
+
+# Set factor variable levels
+levels(tms$color) = c("D", "E", "F", "G", "H", "I", "J", "K", "L")
+levels(tms$clarity) = c("IF", "VVS1", "VVS2", "VS1", "VS2", "SI1", "SI2", 
+                        "I1", "I2")
+
+# Rename factor variable levels (replace spaces)
+levels(tms$store) = c("Ashford", "Ausmans", "Blue_Nile", "Chalmers", 
+                      "Danford", "Fred_Meyer", "Goodmans", "Kay", 
+                      "R_Holland", "Riddles", "University", "Zales")
+levels(tms$cut) = c("Ideal", "Not_Ideal")
+
+#--------------------------------------
+# GitHub
+#--------------------------------------
+# Create function to source functions from GitHub
+source.GitHub = function(url){
+    require(RCurl)
+    sapply(url, function(x){
+        eval(parse(text = getURL(x, followlocation = T,
+                                 cainfo = system.file("CurlSSL", 
+                                          "cacert.pem", package = "RCurl"))),
+             envir = .GlobalEnv)
+    })
+}
+
+# Assign URL and source functions
+url = "http://bit.ly/1T6LhBJ"
+source.GitHub(url); rm(url)
+
+#--------------------------------------
+# RMSE
+#--------------------------------------
+rmse = function(pred, actual){
+    sqrt(mean((pred - actual)^2))
+}
+
+#==============================================================================
+# Model Build
+#==============================================================================
+
+# Random sample into 70/30 training-test split
+set.seed(123)
+tms.train = createDataPartition(tms$price, p = 0.70, list = F)
+tms.test = as.matrix(as.integer(rownames(tms))[-tms.train])
+
+# Create binary indicator variables
+tms = fac.flag(tms)
+
+# Remove factor variables
+tms = subset(tms, select = -c(color, clarity, cut, channel, store))
+
+#------------------------------------------------------------------------------
+# GA in {GA}
+#------------------------------------------------------------------------------
+
+# Build model
+tms.m1 = lm(price ~ .,
+            data = tms[tms.train, ])
+summary(tms.m1)
+
+# Model matrix
+x = model.matrix(tms.m1)[, -1]
+y = model.response(model.frame(tms.m1))
+
+# Define fitness function (BIC)
+fitness = function(string){
+    inc = which(string == 1)
+    X = cbind(1, x[, inc])
+    mod = lm.fit(X, y)
+    class(mod) = "lm"
+    -BIC(mod)
+}
+
+# Create GA model
+set.seed(123)
+GA = ga("binary",
+        fitness = fitness,
+        nBits = ncol(x),
+        names = colnames(x),
+        maxiter = 200)
+plot(GA)
+summary(GA)
+
+# Build model
+tms.m2 = lm(price ~ .,
+            data = data.frame(price = y, x[, GA@solution[1, ] == 1]))
+summary(tms.m2)
+
+# Build model
+tms.m3 = lm(price ~ carat + color_G + color_H + color_F + color_D + color_E + 
+                color_I + clarity_SI1 + clarity_VS2 + clarity_SI2 + 
+                clarity_I1 + clarity_VS1 + clarity_I2 + cut_Not_Ideal + 
+                channel_Mall + store_Goodmans + store_Fred_Meyer,
+            data = tms[tms.train, ])
+summary(tms.m3)
+
+# In-sample
+tms.m3.trn.pred = predict(tms.m3, newdata = tms[tms.train, -2])
+tms.m3.trn.rmse = rmse(tms.m3.trn.pred, tms$price[tms.train])
+
+# Out-of-sample
+tms.m3.tst.pred = predict(tms.m3, newdata = tms[tms.test, -2])
+tms.m3.tst.rmse = rmse(tms.m3.tst.pred, tms$price[tms.test])
+
+#------------------------------------------------------------------------------
+# GA in {caret}
+#------------------------------------------------------------------------------
+
+# Set fit control
+tms.m4.fc = gafsControl(functions = rfGA,
+                        method = "cv",
+                        number = 5)
+
+# Build model
+set.seed(123)
+tms.m4 = gafs(x = tms[tms.train, -2],
+              y = tms[tms.train, 2],
+              iters = 10,
+              gafsControl = tms.m4.fc)
+
+# Model summary
+tms.m4
+tms.m4$ga$final
+plot(tms.m4)
+
+# In-sample
+tms.m4.trn.pred = predict(tms.m4, newdata = tms[tms.train, -2])
+tms.m4.trn.rmse = rmse(tms.m4.trn.pred, tms$price[tms.train])
+
+# Out-of-sample
+tms.m4.tst.pred = predict(tms.m4, newdata = tms[tms.test, -2])
+tms.m4.tst.rmse = rmse(tms.m4.tst.pred, tms$price[tms.test])
+
+#------------------------------------------------------------------------------
+# Results
+#------------------------------------------------------------------------------
+
+# Model Names
+model.comp = data.frame(Model_Names = c("M3", "M4"),
+                        Package = c("{GA}", "{caret}"),
+                        Features = c("17", "27"),
+                        RMSE_Train = c(tms.m3.trn.rmse, tms.m4.trn.rmse),
+                        RMSE_Test = c(tms.m3.tst.rmse, tms.m4.tst.rmse))
+
+pander(model.comp, caption = "", justify = "left")
