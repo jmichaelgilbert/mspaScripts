@@ -1,0 +1,114 @@
+---
+title: "454_Sample_Flat_File"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+  pdf_document: default
+geometry: margin = 0.5in
+---
+\
+```{r setup, include = F}
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(warning = F) 
+knitr::opts_chunk$set(results = "hold")
+```
+
+# Sampling a Text File
+
+In the Week #1 module we have a set of practice data manipulation exercises to use as a warm up for the quarter. Most of these exercises are trivial, however #10 is a very important skill. Frequently we will interact with data stored as large text files. As an `R` user we know that the `R` functions `read.table()` and `read.csv()` will read the entire data set into memory, what do we do if we want to access some of the data without reading all of it into memory?
+
+If we wanted to read part of the data in without reading all of the data in, then we would be performing an operation called `chunking`. However, what if we want to read in a random sample. Data is frequently stored in non-random order, and hence we always want to be able to sample a text file 'on the fly' without reading the whole file into memory. How do we do this?
+
+Complete Exercise #10 and post your code on Sunday night so that everyone has a chance to work on the problem.
+
+# Solution
+
+```{r SFF_V1}
+#==============================================================================
+# Version 1
+#==============================================================================
+# Set file name
+df = "AmesHousing.txt"
+
+# Draw random sample of observation IDs without replacement for specified size 
+# Note: row.names = 1 only reads a single column
+set.seed(123)
+samp = sample(x = nrow(read.table(df, header = T, sep = "\t", row.names = 1)), 
+              size = 200, replace = F)
+
+# Extract and concatenate tuples of observation IDs from file
+# Note: nrows = 1 only reads a single row
+temp = NULL
+for (i in samp){
+    temp = rbind(temp, read.table(df, header = F, sep = "\t", nrows = 1, 
+                 skip = i))
+}
+
+# Assign column names
+# Note: nrows = 1 only reads a single row
+colnames(temp) = colnames(read.table(df, header = T, sep = "\t", nrows = 1))
+
+# Validate sampling did not select duplicate rows
+anyDuplicated(temp$SID)
+```
+
+```{r SFF_V2, include = F}
+#==============================================================================
+# Version 2
+#==============================================================================
+# Set file name
+df = "AmesHousing.txt"
+
+# Count rows
+rows.count = function(df, head, sep){
+    df.rows = 1
+    cols = ncol(read.table(df, header = head, sep = sep, nrows = 1))
+    repeat{
+        tryCatch(read.table(df, header = head, sep = sep, nrows = df.rows, 
+                            row.names = 1), 
+                 error = function(c){
+                     stop(c)
+                     })
+        df.rows = df.rows + 1
+    }
+    return(df.rows)
+}
+
+
+# Count rows
+rows.count = function(df, head, sep){
+    df.rows = 1
+    cols = ncol(read.table(df, header = head, sep = sep, nrows = 1))
+    repeat{
+        temp = tryCatch(read.table(df, header = head, sep = sep, 
+                        nrows = df.rows, colClasses = c(rep("integer", 1), 
+                        rep("NULL", (cols-1)))), 
+                        error = function(c){stop(c)})
+        df.rows = df.rows + 1
+    }
+    return(nrow(temp))
+}
+
+# Deploy
+rows.count(df, head = T, sep = "\t")
+
+
+df = "AmesHousing.txt"
+df.rows = 2
+cols = ncol(read.table(df, header = T, sep = "\t", nrows = 1))
+temp = read.table(df, header = T, sep = "\t", nrows = df.rows,
+                  colClasses = c(1, rep("NULL", (cols-1))))
+nrow(temp)
+
+```
+
+```{r FIN}
+# Session Info
+sessionInfo()
+```
