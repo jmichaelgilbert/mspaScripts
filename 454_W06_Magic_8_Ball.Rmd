@@ -1,0 +1,83 @@
+---
+title: "454_Magic_8_Ball"
+author: "Michael Gilbert"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    fig_caption: yes
+    fig_crop: no
+    fig_height: 4.75
+    fig_width: 5.75
+    highlight: tango
+  pdf_document: default
+geometry: margin = 0.5in
+---
+\
+```{r setup, include = F}
+knitr::opts_chunk$set(echo = T)
+```
+
+# Magic 8-ball
+
+Write an `R` function `magic.8ball(` that outputs one the following statements when called.
+
+(1) 'I don't see that happening.'
+(2) 'You must be dreaming.'
+(3) 'Chances are good.'
+(4) 'If you work hard and stay focused, then this might happen.'
+(5) 'When the sun shines, it shines on your face.'
+(6) 'Definitely going to happen!'
+(7) 'Take some time to think about it.'
+(8) 'This is not a good idea!'
+(9) 'This is a great idea!'
+(10) 'Cannot be determined at this time. Try Again!'
+
+__Advanced__ - Include an optional argument named `x.seed` that controls the seed for the random number generator. The default definition of `x.seed` should allow the `magic.8ball()` to be random, but its existence will allow you to manually control the seed value and produce the same output from the `magic.8ball()` each time.
+
+# Function
+
+```{r Magic_8_Ball}
+#==============================================================================
+# Function
+#==============================================================================
+magic.8ball = function(x.seed){
+    if (!missing(x.seed)){
+        set.seed(x.seed)
+    }
+    sample(c("I don't see that happening.", 
+             "You must be dreaming.", 
+             "Chances are good.", 
+             "If you work hard and stay focused, then this might happen.", 
+             "When the sun shines, it shines on your face.", 
+             "Definitely going to happen!", 
+             "Take some time to think about it.", 
+             "This is not a good idea!", 
+             "This is a great idea!", 
+             "Cannot be determined at this time. Try Again!"), 1)
+}
+```
+
+# Function Call
+
+```{r FUN_1, results = "hold"}
+#==============================================================================
+# x.seed value = FALSE
+#==============================================================================
+magic.8ball()
+magic.8ball()
+magic.8ball()
+```
+
+```{r FUN_2, results = "hold"}
+#==============================================================================
+# x.seed value = TRUE
+#==============================================================================
+magic.8ball(x.seed = 123)
+magic.8ball(x.seed = 123)
+magic.8ball(x.seed = 123)
+```
+
+```{r FIN}
+# Session Info
+sessionInfo()
+```
