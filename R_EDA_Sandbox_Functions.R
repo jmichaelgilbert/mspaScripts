@@ -632,12 +632,20 @@ fac.flag = function(df){
 #==============================================================================
 text.clean = function(df, stop.words, sparse, freq = FALSE){
     require(tm)
+    # Set valid range for sparse and check
+    if (!missing(sparse)){
+        val.range = round(seq(from = 0.01, to = 0.99, by = 0.01), digits = 2)
+        sparse = round(sparse, digits = 2)
+        if (!sparse %in% val.range){
+            stop("The value of sparse must be between 0.01 and 0.99.")
+        }
+    }
     # Check for sparse value and freq = TRUE
     if (!missing(sparse) && freq){
         warning("Frequency argument ignored when sparse value given.")
     }
     # Basic cleaning functions
-    temp = Corpus(VectorSource(paste(df, collapse = " ")))
+    temp = Corpus(VectorSource(df))
     temp = tm_map(temp, content_transformer(tolower))
     temp = tm_map(temp, removePunctuation)
     temp = tm_map(temp, stripWhitespace)
@@ -645,21 +653,16 @@ text.clean = function(df, stop.words, sparse, freq = FALSE){
     if (!missing(stop.words)){
         temp = tm_map(temp, removeWords, c(stopwords("english"), stop.words))
     } else {
-        temp = tm_map(temp, removeWords, c(stopwords("english")))
+        temp = tm_map(temp, removeWords, stopwords("english"))
     }
-    # Stem document
     temp = tm_map(temp, stemDocument)
-    # Check for sparse value
+    # Check for sparse argument
     if (!missing(sparse)){
-        val.range = seq(from = 0.01, to = 0.99, by = 0.01)
-        if(!sparse %in% val.range){
-            stop("The value of sparse must be between 0.01 and 0.99.")
-        }
         tdm = TermDocumentMatrix(temp)
-        tdm = removeSparseTerms(tdm, sparse)
+        tdm = removeSparseTerms(tdm, sparse = sparse)
         return(tdm)
     }
-    # Check if user wants frequency of terms
+    # Check for frequency argument
     if (missing(sparse)){
         if (!freq){
             return(temp)
