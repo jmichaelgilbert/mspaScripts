@@ -647,6 +647,7 @@ text.clean = function(df, stop.words, sparse, freq = FALSE){
     # Basic cleaning functions
     temp = Corpus(VectorSource(df))
     temp = tm_map(temp, content_transformer(tolower))
+    temp = tm_map(temp, removeNumbers)
     temp = tm_map(temp, removePunctuation)
     temp = tm_map(temp, stripWhitespace)
     # Check for additional stop words
