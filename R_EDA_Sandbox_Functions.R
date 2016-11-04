@@ -1,6 +1,6 @@
 ###############################################################################
 # R_EDA_Sandbox_Functions.R
-# Last updated: 2016-08-02 by MJG
+# Last updated: 2016-11-04 by MJG
 ###############################################################################
 
 # A compilation of useful functions to [ideally] deploy on any data set
@@ -644,8 +644,14 @@ text.clean = function(df, stop.words, sparse, freq = FALSE){
     if (!missing(sparse) && freq){
         warning("Frequency argument ignored when sparse value given.")
     }
+    # Create corpus
+    if (!freq){
+        temp = Corpus(VectorSource(df))
+    }
+    if (freq){
+        temp = Corpus(VectorSource(paste(df, collapse = " ")))
+    }
     # Basic cleaning functions
-    temp = Corpus(VectorSource(df))
     temp = tm_map(temp, content_transformer(tolower))
     temp = tm_map(temp, removeNumbers)
     temp = tm_map(temp, removePunctuation)
@@ -680,3 +686,4 @@ text.clean = function(df, stop.words, sparse, freq = FALSE){
 #==============================================================================
 # FIN
 #==============================================================================
+sessionInfo()
