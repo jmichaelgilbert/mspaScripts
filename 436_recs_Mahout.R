@@ -1,7 +1,7 @@
 #==============================================================================
 #==============================================================================
 # 00_recs_Mahout
-# Last Updated: 2016-11-18 by MJG
+# Last Updated: 2016-12-04 by MJG
 #==============================================================================
 #==============================================================================
 
@@ -139,8 +139,12 @@ recs.out$reviewerID = recs.in$reviewerID[match(recs.out$reviewerID.num,
 recs.out$asin = recs.in$asin[match(recs.out$asin.num,
                                    recs.in$asin.num)]
 
+# Add in link to product page
+recs.out$link = paste0("https://www.amazon.com/dp/",
+                       recs.out$asin)
+
 # Export
-write.table(x = recs.out[, 3:4],
+write.table(x = recs.out[, 3:5],
             file = "recs_output.csv",
             quote = FALSE,
             sep = ",",
